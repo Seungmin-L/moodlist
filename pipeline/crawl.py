@@ -133,7 +133,14 @@ def _genius_api_get(path: str, token: str = None, params: Dict = None) -> Dict:
 
 def _genius_public_get(path: str, params: Dict = None) -> Dict:
     url = f"{_GENIUS_PUBLIC_API_BASE}{path}"
-    response = requests.get(url, params=params or {}, timeout=15)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+    }
+    response = requests.get(url, params=params or {}, headers=headers, timeout=15)
     response.raise_for_status()
     payload = response.json()
     if payload.get("meta", {}).get("status") != 200:
@@ -143,6 +150,31 @@ def _genius_public_get(path: str, params: Dict = None) -> Dict:
 
 def _normalize_compact(value: str) -> str:
     return _normalize_text(value).replace(" ", "")
+
+
+def _build_artist_aliases(value: str) -> List[str]:
+    raw = (value or "").strip()
+    if not raw:
+        return []
+
+    aliases = set()
+    whole = _normalize_text(raw, keep_parenthetical=True)
+    if whole:
+        aliases.add(whole)
+
+    outside = _normalize_text(raw, keep_parenthetical=False)
+    if outside:
+        aliases.add(outside)
+
+    parenthetical_contents = []
+    parenthetical_contents.extend(re.findall(r"\(([^)]*)\)", raw))
+    parenthetical_contents.extend(re.findall(r"\[([^\]]*)\]", raw))
+    for content in parenthetical_contents:
+        normalized = _normalize_text(content, keep_parenthetical=True)
+        if normalized:
+            aliases.add(normalized)
+
+    return sorted(aliases)
 
 
 def _split_artist_inputs(artist: str) -> List[str]:
@@ -170,17 +202,26 @@ def _split_artist_inputs(artist: str) -> List[str]:
 
 
 def _artist_anchor_match(anchor_artist: str, candidate_artist: str) -> Dict:
-    anchor_norm = _normalize_text(anchor_artist)
-    candidate_norm = _normalize_text(candidate_artist)
-    anchor_key = _normalize_compact(anchor_artist)
-    candidate_key = _normalize_compact(candidate_artist)
-
-    if not anchor_norm or not candidate_norm:
+    anchor_aliases = _build_artist_aliases(anchor_artist)
+    candidate_aliases = _build_artist_aliases(candidate_artist)
+    if not anchor_aliases or not candidate_aliases:
         return {"score": 0.0, "exact": False}
 
-    exact = anchor_norm == candidate_norm or (anchor_key and anchor_key == candidate_key)
-    contains = anchor_norm in candidate_norm or candidate_norm in anchor_norm
-    seq = _sequence_ratio(anchor_norm, candidate_norm)
+    anchor_set = set(anchor_aliases)
+    candidate_set = set(candidate_aliases)
+    anchor_compact = {a.replace(" ", "") for a in anchor_set if a}
+    candidate_compact = {a.replace(" ", "") for a in candidate_set if a}
+
+    exact = bool((anchor_set & candidate_set) or (anchor_compact & candidate_compact))
+    contains = any(
+        (a and c and (a in c or c in a))
+        for a in anchor_aliases
+        for c in candidate_aliases
+    )
+    seq = max(
+        (_sequence_ratio(a, c) for a in anchor_aliases for c in candidate_aliases),
+        default=0.0,
+    )
 
     score = 0.0
     if exact:
@@ -322,8 +363,44 @@ def _rank_public_artist_candidates(anchor_artist: str, candidates: List[dict]) -
 
 
 def _select_artist_candidates_for_verification(ranked_candidates: List[dict], top_k: int = 3) -> List[dict]:
-    exact_candidates = [c for c in ranked_candidates if c.get("exact")]
-    return exact_candidates[:top_k]
+    if not ranked_candidates:
+        return []
+
+    selected = []
+    seen_ids = set()
+
+    def _append(candidate: dict):
+        artist_id = candidate.get("id")
+        if artist_id in seen_ids:
+            return
+        seen_ids.add(artist_id)
+        selected.append(candidate)
+
+    for candidate in ranked_candidates:
+        if candidate.get("exact"):
+            _append(candidate)
+        if len(selected) >= top_k:
+            return selected[:top_k]
+
+    # exact가 없을 때는 강한 유사 후보까지 검증 대상으로 포함
+    for candidate in ranked_candidates:
+        if candidate.get("contains") and candidate.get("sequence", 0.0) >= 0.72:
+            _append(candidate)
+        if len(selected) >= top_k:
+            return selected[:top_k]
+
+    for candidate in ranked_candidates:
+        if candidate.get("score", 0.0) >= 30.0:
+            _append(candidate)
+        if len(selected) >= top_k:
+            return selected[:top_k]
+
+    for candidate in ranked_candidates:
+        _append(candidate)
+        if len(selected) >= top_k:
+            break
+
+    return selected
 
 
 def _fetch_artist_songs(
@@ -379,6 +456,8 @@ def summarize_search_diagnostics(diagnostics: dict) -> str:
 
     stage = diagnostics.get("failure_stage") or "ok"
     anchor_artist = diagnostics.get("anchor_artist", "")
+    artist_parts = diagnostics.get("artist_parts", []) or []
+    parts_text = ", ".join(artist_parts[:3]) or "없음"
     selected = diagnostics.get("selected_artist")
     if selected:
         selected_text = (
@@ -389,6 +468,7 @@ def summarize_search_diagnostics(diagnostics: dict) -> str:
         selected_text = "없음"
 
     artist_candidates = diagnostics.get("artist_candidates", [])
+    artist_candidate_count = diagnostics.get("artist_candidate_count", len(artist_candidates))
     artist_candidates_text = ", ".join(
         [f"{c.get('name', 'unknown')}[{c.get('score', 0.0):.1f}]" for c in artist_candidates[:3]]
     ) or "없음"
@@ -408,7 +488,8 @@ def summarize_search_diagnostics(diagnostics: dict) -> str:
     ) or "없음"
 
     return (
-        f"stage={stage} | anchor={anchor_artist or '없음'} | selected={selected_text} | "
+        f"stage={stage} | anchor={anchor_artist or '없음'} | parts={parts_text} | selected={selected_text} | "
+        f"artist_candidate_count={artist_candidate_count} | "
         f"artist_candidates={artist_candidates_text} | "
         f"verified={verified_text} | "
         f"pages={diagnostics.get('pages_fetched', 0)} songs={diagnostics.get('songs_scanned', 0)} "
@@ -440,6 +521,7 @@ def search_song_with_diagnostics(
         "anchor_artist": "",
         "artist_parts": [],
         "artist_candidates": [],
+        "artist_candidate_count": 0,
         "verified_artists": [],
         "selected_artist": None,
         "pages_fetched": 0,
@@ -472,6 +554,7 @@ def search_song_with_diagnostics(
     try:
         artist_candidates = _search_artist_candidates_public(anchor_artist, max_candidates=30)
         ranked_candidates = _rank_public_artist_candidates(anchor_artist, artist_candidates)
+        diagnostics["artist_candidate_count"] = len(ranked_candidates)
         diagnostics["artist_candidates"] = ranked_candidates[:5]
         verify_candidates = _select_artist_candidates_for_verification(
             ranked_candidates,

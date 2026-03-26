@@ -314,11 +314,9 @@ with tab2:
                 status_text.write(f"처리 중: {track['title']} - {track['artist']}")
                 
                 try:
-                    # 아티스트명 정리 (쉼표 → 띄어쓰기)
-                    import re
-                    clean_artist = re.sub(r"\s*,\s*", " ", track["artist"]).strip()
+                    raw_artist = (track.get("artist") or "").strip()
 
-                    if not clean_artist:
+                    if not raw_artist:
                         fail_list.append({
                             "track": track,
                             "reason": "아티스트 정보가 없어 artist-first 검색 불가"
@@ -328,7 +326,7 @@ with tab2:
                     # artist-first exact 검색만 사용
                     results, diagnostics = crawl.search_song_with_diagnostics(
                         title=track["title"],
-                        artist=clean_artist,
+                        artist=raw_artist,
                         limit=20,
                     )
                     filtered = crawl.filter_original_korean(results)
@@ -582,6 +580,6 @@ with tab4:
     if rows:
         import pandas as pd
         df = pd.DataFrame(rows, columns=columns)
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width=True)
     else:
         st.info("데이터가 없습니다.")
