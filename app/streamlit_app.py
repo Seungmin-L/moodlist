@@ -89,7 +89,10 @@ with tab1:
             crawl = _load_crawl_module()
             
             with st.spinner("검색 중..."):
-                results = crawl.search_song(title=title, artist=artist)
+                results, diagnostics = crawl.search_song_with_diagnostics(
+                    title=title,
+                    artist=artist,
+                )
                 
                 # 번역/로마자 필터링
                 filtered = crawl.filter_original_korean(results)
@@ -101,6 +104,7 @@ with tab1:
                     st.session_state['selected_song'] = None
                 else:
                     st.warning("검색 결과가 없습니다.")
+                    st.caption(crawl.summarize_search_diagnostics(diagnostics))
                     st.session_state['search_results'] = []
     
     # 검색 결과 표시
@@ -322,7 +326,7 @@ with tab2:
                         continue
 
                     # artist-first exact 검색만 사용
-                    results = crawl.search_song(
+                    results, diagnostics = crawl.search_song_with_diagnostics(
                         title=track["title"],
                         artist=clean_artist,
                         limit=20,
@@ -334,7 +338,10 @@ with tab2:
                     if not filtered:
                         fail_list.append({
                             "track": track,
-                            "reason": "아티스트 기준 제목 exact 매칭 실패"
+                            "reason": (
+                                "아티스트 기준 제목 exact 매칭 실패 | "
+                                f"{crawl.summarize_search_diagnostics(diagnostics)}"
+                            )
                         })
                         continue
                     

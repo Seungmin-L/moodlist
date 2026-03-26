@@ -309,7 +309,40 @@ def _fetch_artist_songs(
     return songs
 
 
-def search_song(
+def summarize_search_diagnostics(diagnostics: dict) -> str:
+    if not diagnostics:
+        return "diagnostics 없음"
+
+    stage = diagnostics.get("failure_stage") or "ok"
+    selected = diagnostics.get("selected_artist")
+    if selected:
+        selected_text = (
+            f"{selected.get('name', 'unknown')}[{selected.get('id', '-')}]"
+            f"/score={selected.get('match_score', 0.0):.1f}"
+        )
+    else:
+        selected_text = "없음"
+
+    artist_candidates = diagnostics.get("artist_candidates", [])
+    artist_candidates_text = ", ".join(
+        [f"{c.get('name', 'unknown')}[{c.get('score', 0.0):.1f}]" for c in artist_candidates[:3]]
+    ) or "없음"
+
+    near_misses = diagnostics.get("near_misses", [])
+    near_misses_text = ", ".join(
+        [f"{m.get('title', '')}[{m.get('similarity', 0.0):.2f}]" for m in near_misses[:3]]
+    ) or "없음"
+
+    return (
+        f"stage={stage} | selected={selected_text} | "
+        f"artist_candidates={artist_candidates_text} | "
+        f"pages={diagnostics.get('pages_fetched', 0)} songs={diagnostics.get('songs_scanned', 0)} "
+        f"non_primary_skip={diagnostics.get('non_primary_skipped', 0)} | "
+        f"near={near_misses_text}"
+    )
+
+
+def search_song_with_diagnostics(
     title: str,
     artist: str,
     token: str = None,
@@ -325,17 +358,45 @@ def search_song(
     3) 제목 exact 매칭만 통과
     """
     debug_mode = _is_debug_enabled(debug)
+    diagnostics = {
+        "query_title": title,
+        "query_artist": artist,
+        "artist_candidates": [],
+        "selected_artist": None,
+        "pages_fetched": 0,
+        "songs_scanned": 0,
+        "non_primary_skipped": 0,
+        "exact_match_count": 0,
+        "near_misses": [],
+        "failure_stage": None,
+        "error": None,
+    }
 
     if not title or not title.strip():
-        return []
+        diagnostics["failure_stage"] = "empty_title"
+        return [], diagnostics
     if not artist or not artist.strip():
         if debug_mode:
             print("[crawl.search_song] artist is required for artist-first matching.")
-        return []
+        diagnostics["failure_stage"] = "empty_artist"
+        return [], diagnostics
 
     try:
         artist_candidates = _search_artist_candidates(artist, token=token, max_candidates=20)
+        scored_candidates = []
+        for candidate in artist_candidates:
+            scored_candidates.append(
+                {
+                    "id": candidate.get("id"),
+                    "name": candidate.get("name", ""),
+                    "score": _artist_match_score(artist, candidate.get("name", "")),
+                }
+            )
+        scored_candidates.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        diagnostics["artist_candidates"] = scored_candidates[:5]
+
         selected_artist = _select_best_artist_candidate(artist_candidates, artist)
+        diagnostics["selected_artist"] = selected_artist
 
         if debug_mode:
             print(f"[crawl.search_song] title='{title}' artist='{artist}'")
@@ -348,7 +409,8 @@ def search_song(
                 )
 
         if not selected_artist:
-            return []
+            diagnostics["failure_stage"] = "artist_selection"
+            return [], diagnostics
 
         songs = _fetch_artist_songs(
             artist_id=selected_artist["id"],
@@ -357,12 +419,26 @@ def search_song(
             max_pages=max_pages,
             debug=debug_mode,
         )
+        diagnostics["pages_fetched"] = len({s.get("source_page") for s in songs})
+        diagnostics["songs_scanned"] = len(songs)
 
         matches = []
+        near_misses = []
+        query_norm = _normalize_text(title, keep_parenthetical=True)
         for song in songs:
             if song.get("primary_artist_id") != selected_artist["id"]:
+                diagnostics["non_primary_skipped"] += 1
                 continue
             if not _title_exact_match(title, song.get("title", "")):
+                candidate_norm = _normalize_text(song.get("title", ""), keep_parenthetical=True)
+                near_misses.append(
+                    {
+                        "title": song.get("title", ""),
+                        "artist": song.get("artist", ""),
+                        "similarity": round(_sequence_ratio(query_norm, candidate_norm), 3),
+                        "page": song.get("source_page"),
+                    }
+                )
                 continue
 
             match = dict(song)
@@ -378,6 +454,9 @@ def search_song(
         if debug_mode:
             print(f"[crawl.search_song] exact_matches={len(matches)}")
 
+        near_misses.sort(key=lambda x: x.get("similarity", 0.0), reverse=True)
+        diagnostics["near_misses"] = near_misses[:5]
+
         dedup = []
         seen_song_ids = set()
         for song in matches:
@@ -387,10 +466,38 @@ def search_song(
             seen_song_ids.add(song_id)
             dedup.append(song)
 
-        return dedup[:limit]
+        diagnostics["exact_match_count"] = len(dedup)
+        if not dedup:
+            diagnostics["failure_stage"] = "title_exact"
+        return dedup[:limit], diagnostics
     except Exception as e:
         print(f"검색 실패: {e}")
-        return []
+        diagnostics["failure_stage"] = "exception"
+        diagnostics["error"] = str(e)
+        return [], diagnostics
+
+
+def search_song(
+    title: str,
+    artist: str,
+    token: str = None,
+    limit: int = 10,
+    debug: bool = None,
+    per_page: int = 50,
+    max_pages: int = 20,
+):
+    results, diagnostics = search_song_with_diagnostics(
+        title=title,
+        artist=artist,
+        token=token,
+        limit=limit,
+        debug=debug,
+        per_page=per_page,
+        max_pages=max_pages,
+    )
+    if _is_debug_enabled(debug) and not results:
+        print(f"[crawl.search_song] diagnostics: {summarize_search_diagnostics(diagnostics)}")
+    return results
 
 
 def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
@@ -469,7 +576,7 @@ def search_and_get_lyrics(
                 print("[crawl.search_and_get_lyrics] artist is required.")
             return None
 
-        results = search_song(
+        results, diagnostics = search_song_with_diagnostics(
             title=title,
             artist=artist,
             token=token,
@@ -478,6 +585,11 @@ def search_and_get_lyrics(
         )
         
         if not results:
+            if debug_mode:
+                print(
+                    "[crawl.search_and_get_lyrics] no exact match. "
+                    f"{summarize_search_diagnostics(diagnostics)}"
+                )
             return None
 
         if debug_mode:
