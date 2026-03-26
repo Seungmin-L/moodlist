@@ -16,4 +16,4 @@ env/
 .streamlit/
 .spotify_cache
 .cache
-.spotify_cache
+/pipeline/__pycache__
