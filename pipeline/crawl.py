@@ -12,7 +12,7 @@ import os
 import sys
 import re
 import difflib
-from typing import List, Dict, Optional
+from typing import List, Dict
 from pathlib import Path
 
 # 프로젝트 루트 경로 추가
@@ -73,6 +73,7 @@ def _is_debug_enabled(debug: bool = None) -> bool:
 
 
 _GENIUS_API_BASE = "https://api.genius.com"
+_GENIUS_PUBLIC_API_BASE = "https://genius.com/api"
 _TITLE_META_KEYWORDS = {
     "feat",
     "ft",
@@ -112,11 +113,6 @@ def _normalize_text(value: str, keep_parenthetical: bool = True) -> str:
     return text
 
 
-def _tokenize(value: str) -> List[str]:
-    """공백 토큰화 + 길이 1 토큰 제거"""
-    return [t for t in _normalize_text(value).split() if len(t) > 1]
-
-
 def _sequence_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
@@ -133,6 +129,72 @@ def _genius_api_get(path: str, token: str = None, params: Dict = None) -> Dict:
     if payload.get("meta", {}).get("status") != 200:
         raise RuntimeError(f"Genius API 오류: {payload.get('meta')}")
     return payload.get("response", {})
+
+
+def _genius_public_get(path: str, params: Dict = None) -> Dict:
+    url = f"{_GENIUS_PUBLIC_API_BASE}{path}"
+    response = requests.get(url, params=params or {}, timeout=15)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("meta", {}).get("status") != 200:
+        raise RuntimeError(f"Genius Public API 오류: {payload.get('meta')}")
+    return payload.get("response", {})
+
+
+def _normalize_compact(value: str) -> str:
+    return _normalize_text(value).replace(" ", "")
+
+
+def _split_artist_inputs(artist: str) -> List[str]:
+    raw = (artist or "").strip()
+    if not raw:
+        return []
+
+    parts = re.split(
+        r"\s*(?:,|;|/|&| and | feat\.?| ft\.?| featuring )\s*",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    dedup = []
+    seen = set()
+    for part in parts:
+        clean = part.strip()
+        if not clean:
+            continue
+        key = _normalize_compact(clean)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        dedup.append(clean)
+    return dedup
+
+
+def _artist_anchor_match(anchor_artist: str, candidate_artist: str) -> Dict:
+    anchor_norm = _normalize_text(anchor_artist)
+    candidate_norm = _normalize_text(candidate_artist)
+    anchor_key = _normalize_compact(anchor_artist)
+    candidate_key = _normalize_compact(candidate_artist)
+
+    if not anchor_norm or not candidate_norm:
+        return {"score": 0.0, "exact": False}
+
+    exact = anchor_norm == candidate_norm or (anchor_key and anchor_key == candidate_key)
+    contains = anchor_norm in candidate_norm or candidate_norm in anchor_norm
+    seq = _sequence_ratio(anchor_norm, candidate_norm)
+
+    score = 0.0
+    if exact:
+        score += 100.0
+    if contains:
+        score += 20.0
+    score += seq * 15.0
+
+    return {
+        "score": round(score, 3),
+        "exact": exact,
+        "contains": contains,
+        "sequence": round(seq, 3),
+    }
 
 
 def _is_meta_parenthetical(content: str) -> bool:
@@ -199,67 +261,69 @@ def _title_exact_match(query_title: str, candidate_title: str) -> bool:
     return bool(compact_queries & compact_aliases)
 
 
-def _artist_match_score(query_artist: str, candidate_artist: str) -> float:
-    q = _normalize_text(query_artist)
-    c = _normalize_text(candidate_artist)
-    if not q or not c:
-        return 0.0
-    if q == c:
-        return 100.0
+def _search_artist_candidates_public(anchor_artist: str, max_candidates: int = 30) -> List[dict]:
+    response = _genius_public_get(
+        "/search/artist",
+        params={"q": anchor_artist, "per_page": max_candidates},
+    )
 
-    score = 0.0
-    if q in c or c in q:
-        score += 42.0
+    sections = response.get("sections", []) or []
+    artist_hits = []
+    for section in sections:
+        if (section.get("type") or "").lower() == "artist":
+            artist_hits.extend(section.get("hits", []) or [])
 
-    q_tokens = set(_tokenize(query_artist))
-    c_tokens = set(_tokenize(candidate_artist))
-    if q_tokens:
-        overlap = len(q_tokens & c_tokens) / len(q_tokens)
-        score += overlap * 45.0
-
-    score += _sequence_ratio(q, c) * 13.0
-    return round(score, 3)
-
-
-def _search_artist_candidates(artist_name: str, token: str = None, max_candidates: int = 20) -> List[dict]:
-    response = _genius_api_get("/search", token=token, params={"q": artist_name})
-    hits = response.get("hits", [])
+    # 일부 응답 포맷 대응
+    if not artist_hits:
+        artist_hits = response.get("hits", []) or []
 
     dedup = {}
-    for hit in hits:
-        result = hit.get("result", {})
-        primary_artist = result.get("primary_artist", {})
-        artist_id = primary_artist.get("id")
-        artist_display_name = primary_artist.get("name", "").strip()
-        if not artist_id or not artist_display_name:
+    for hit in artist_hits:
+        result = hit.get("result", {}) or {}
+        artist_id = result.get("id")
+        artist_name = (result.get("name") or "").strip()
+        if not artist_id or not artist_name:
             continue
-        if artist_id not in dedup:
-            dedup[artist_id] = {
-                "id": artist_id,
-                "name": artist_display_name,
-            }
+        if artist_id in dedup:
+            continue
+        dedup[artist_id] = {
+            "id": artist_id,
+            "name": artist_name,
+            "url": result.get("url", ""),
+            "api_path": result.get("api_path", ""),
+        }
         if len(dedup) >= max_candidates:
             break
 
     return list(dedup.values())
 
 
-def _select_best_artist_candidate(candidates: List[dict], artist_name: str) -> Optional[dict]:
-    if not candidates:
-        return None
-
+def _rank_public_artist_candidates(anchor_artist: str, candidates: List[dict]) -> List[dict]:
     ranked = []
     for candidate in candidates:
-        score = _artist_match_score(artist_name, candidate.get("name", ""))
-        ranked.append((score, candidate))
+        metrics = _artist_anchor_match(anchor_artist, candidate.get("name", ""))
+        ranked.append(
+            {
+                "id": candidate.get("id"),
+                "name": candidate.get("name", ""),
+                "url": candidate.get("url", ""),
+                "api_path": candidate.get("api_path", ""),
+                "score": metrics["score"],
+                "exact": metrics["exact"],
+                "contains": metrics["contains"],
+                "sequence": metrics["sequence"],
+            }
+        )
+    ranked.sort(
+        key=lambda c: (1 if c.get("exact") else 0, c.get("score", 0.0), c.get("sequence", 0.0)),
+        reverse=True,
+    )
+    return ranked
 
-    ranked.sort(key=lambda x: x[0], reverse=True)
-    best_score, best_candidate = ranked[0]
-    if best_score < 35.0:
-        return None
-    selected = dict(best_candidate)
-    selected["match_score"] = best_score
-    return selected
+
+def _select_artist_candidates_for_verification(ranked_candidates: List[dict], top_k: int = 3) -> List[dict]:
+    exact_candidates = [c for c in ranked_candidates if c.get("exact")]
+    return exact_candidates[:top_k]
 
 
 def _fetch_artist_songs(
@@ -314,6 +378,7 @@ def summarize_search_diagnostics(diagnostics: dict) -> str:
         return "diagnostics 없음"
 
     stage = diagnostics.get("failure_stage") or "ok"
+    anchor_artist = diagnostics.get("anchor_artist", "")
     selected = diagnostics.get("selected_artist")
     if selected:
         selected_text = (
@@ -328,14 +393,24 @@ def summarize_search_diagnostics(diagnostics: dict) -> str:
         [f"{c.get('name', 'unknown')}[{c.get('score', 0.0):.1f}]" for c in artist_candidates[:3]]
     ) or "없음"
 
+    verified_artists = diagnostics.get("verified_artists", [])
+    verified_text = ", ".join(
+        [f"{c.get('name', 'unknown')}[{c.get('score', 0.0):.1f}]" for c in verified_artists[:3]]
+    ) or "없음"
+
     near_misses = diagnostics.get("near_misses", [])
     near_misses_text = ", ".join(
-        [f"{m.get('title', '')}[{m.get('similarity', 0.0):.2f}]" for m in near_misses[:3]]
+        [
+            f"{m.get('title', '')}[{m.get('similarity', 0.0):.2f}"
+            f"@{m.get('candidate_artist', '-')}]"
+            for m in near_misses[:3]
+        ]
     ) or "없음"
 
     return (
-        f"stage={stage} | selected={selected_text} | "
+        f"stage={stage} | anchor={anchor_artist or '없음'} | selected={selected_text} | "
         f"artist_candidates={artist_candidates_text} | "
+        f"verified={verified_text} | "
         f"pages={diagnostics.get('pages_fetched', 0)} songs={diagnostics.get('songs_scanned', 0)} "
         f"non_primary_skip={diagnostics.get('non_primary_skipped', 0)} | "
         f"near={near_misses_text}"
@@ -350,6 +425,7 @@ def search_song_with_diagnostics(
     debug: bool = None,
     per_page: int = 50,
     max_pages: int = 20,
+    verify_top_k: int = 3,
 ):
     """
     Artist-first 곡 검색.
@@ -361,7 +437,10 @@ def search_song_with_diagnostics(
     diagnostics = {
         "query_title": title,
         "query_artist": artist,
+        "anchor_artist": "",
+        "artist_parts": [],
         "artist_candidates": [],
+        "verified_artists": [],
         "selected_artist": None,
         "pages_fetched": 0,
         "songs_scanned": 0,
@@ -381,75 +460,110 @@ def search_song_with_diagnostics(
         diagnostics["failure_stage"] = "empty_artist"
         return [], diagnostics
 
-    try:
-        artist_candidates = _search_artist_candidates(artist, token=token, max_candidates=20)
-        scored_candidates = []
-        for candidate in artist_candidates:
-            scored_candidates.append(
-                {
-                    "id": candidate.get("id"),
-                    "name": candidate.get("name", ""),
-                    "score": _artist_match_score(artist, candidate.get("name", "")),
-                }
-            )
-        scored_candidates.sort(key=lambda x: x.get("score", 0.0), reverse=True)
-        diagnostics["artist_candidates"] = scored_candidates[:5]
+    artist_parts = _split_artist_inputs(artist)
+    anchor_artist = artist_parts[0] if artist_parts else artist.strip()
+    diagnostics["artist_parts"] = artist_parts
+    diagnostics["anchor_artist"] = anchor_artist
 
-        selected_artist = _select_best_artist_candidate(artist_candidates, artist)
-        diagnostics["selected_artist"] = selected_artist
+    if not anchor_artist:
+        diagnostics["failure_stage"] = "empty_artist"
+        return [], diagnostics
+
+    try:
+        artist_candidates = _search_artist_candidates_public(anchor_artist, max_candidates=30)
+        ranked_candidates = _rank_public_artist_candidates(anchor_artist, artist_candidates)
+        diagnostics["artist_candidates"] = ranked_candidates[:5]
+        verify_candidates = _select_artist_candidates_for_verification(
+            ranked_candidates,
+            top_k=max(1, verify_top_k),
+        )
+
+        if verify_candidates:
+            diagnostics["selected_artist"] = {
+                "id": verify_candidates[0]["id"],
+                "name": verify_candidates[0]["name"],
+                "match_score": verify_candidates[0]["score"],
+            }
 
         if debug_mode:
             print(f"[crawl.search_song] title='{title}' artist='{artist}'")
-            print(f"[crawl.search_song] artist_candidates={len(artist_candidates)}")
-            if selected_artist:
+            print(
+                f"[crawl.search_song] artist_parts={artist_parts} "
+                f"anchor='{anchor_artist}' candidates={len(ranked_candidates)}"
+            )
+            if diagnostics["selected_artist"]:
                 print(
                     f"[crawl.search_song] selected_artist="
-                    f"{selected_artist['id']}:{selected_artist['name']} "
-                    f"(score={selected_artist['match_score']})"
+                    f"{diagnostics['selected_artist']['id']}:{diagnostics['selected_artist']['name']} "
+                    f"(score={diagnostics['selected_artist']['match_score']})"
                 )
 
-        if not selected_artist:
+        if not verify_candidates:
             diagnostics["failure_stage"] = "artist_selection"
             return [], diagnostics
-
-        songs = _fetch_artist_songs(
-            artist_id=selected_artist["id"],
-            token=token,
-            per_page=per_page,
-            max_pages=max_pages,
-            debug=debug_mode,
-        )
-        diagnostics["pages_fetched"] = len({s.get("source_page") for s in songs})
-        diagnostics["songs_scanned"] = len(songs)
 
         matches = []
         near_misses = []
         query_norm = _normalize_text(title, keep_parenthetical=True)
-        for song in songs:
-            if song.get("primary_artist_id") != selected_artist["id"]:
-                diagnostics["non_primary_skipped"] += 1
-                continue
-            if not _title_exact_match(title, song.get("title", "")):
-                candidate_norm = _normalize_text(song.get("title", ""), keep_parenthetical=True)
-                near_misses.append(
-                    {
-                        "title": song.get("title", ""),
-                        "artist": song.get("artist", ""),
-                        "similarity": round(_sequence_ratio(query_norm, candidate_norm), 3),
-                        "page": song.get("source_page"),
-                    }
-                )
-                continue
+        for candidate in verify_candidates:
+            candidate_id = candidate["id"]
+            candidate_name = candidate["name"]
+            diagnostics["verified_artists"].append(
+                {
+                    "id": candidate_id,
+                    "name": candidate_name,
+                    "score": candidate["score"],
+                }
+            )
 
-            match = dict(song)
-            match["match_score"] = 100.0
-            match["match_reasons"] = ["artist_first", "title_exact"]
-            match["match_artist"] = {
-                "id": selected_artist["id"],
-                "name": selected_artist["name"],
-                "score": selected_artist["match_score"],
-            }
-            matches.append(match)
+            songs = _fetch_artist_songs(
+                artist_id=candidate_id,
+                token=token,
+                per_page=per_page,
+                max_pages=max_pages,
+                debug=debug_mode,
+            )
+            diagnostics["pages_fetched"] += len({s.get("source_page") for s in songs})
+            diagnostics["songs_scanned"] += len(songs)
+
+            candidate_match_count = 0
+            for song in songs:
+                if song.get("primary_artist_id") != candidate_id:
+                    diagnostics["non_primary_skipped"] += 1
+                    continue
+                if not _title_exact_match(title, song.get("title", "")):
+                    candidate_norm = _normalize_text(song.get("title", ""), keep_parenthetical=True)
+                    near_misses.append(
+                        {
+                            "title": song.get("title", ""),
+                            "artist": song.get("artist", ""),
+                            "candidate_artist": candidate_name,
+                            "similarity": round(_sequence_ratio(query_norm, candidate_norm), 3),
+                            "page": song.get("source_page"),
+                        }
+                    )
+                    continue
+
+                match = dict(song)
+                match["match_score"] = 100.0
+                match["match_reasons"] = ["artist_anchor_exact", "title_exact"]
+                match["match_artist"] = {
+                    "id": candidate_id,
+                    "name": candidate_name,
+                    "score": candidate["score"],
+                }
+                matches.append(match)
+                candidate_match_count += 1
+
+            if debug_mode:
+                print(
+                    f"[crawl.search_song] verified_artist={candidate_name}[{candidate_id}] "
+                    f"exact_matches={candidate_match_count}"
+                )
+
+            # top-k 순차 검증: 첫 번째로 제목 exact가 나온 아티스트를 채택
+            if candidate_match_count > 0:
+                break
 
         if debug_mode:
             print(f"[crawl.search_song] exact_matches={len(matches)}")
@@ -485,6 +599,7 @@ def search_song(
     debug: bool = None,
     per_page: int = 50,
     max_pages: int = 20,
+    verify_top_k: int = 3,
 ):
     results, diagnostics = search_song_with_diagnostics(
         title=title,
@@ -494,6 +609,7 @@ def search_song(
         debug=debug,
         per_page=per_page,
         max_pages=max_pages,
+        verify_top_k=verify_top_k,
     )
     if _is_debug_enabled(debug) and not results:
         print(f"[crawl.search_song] diagnostics: {summarize_search_diagnostics(diagnostics)}")
