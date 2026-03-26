@@ -5,6 +5,7 @@ Moodlist - 가사 기반 플레이리스트 분류 앱
 import streamlit as st
 import sys
 from pathlib import Path
+import importlib
 
 # 프로젝트 루트 경로 추가
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -19,6 +20,11 @@ from db.database import (
 from pipeline.crawl import crawl_and_save
 from pipeline.clean import process_bronze_to_silver
 from pipeline.classify import process_silver_to_gold, CATEGORIES
+
+
+def _load_crawl_module():
+    import pipeline.crawl as crawl_module
+    return importlib.reload(crawl_module)
 
 # 페이지 설정
 st.set_page_config(
@@ -73,21 +79,20 @@ with tab1:
     with col1:
         title = st.text_input("곡 제목", placeholder="예: 미쳤어")
     with col2:
-        artist = st.text_input("아티스트 (선택)", placeholder="예: 손담비")
+        artist = st.text_input("아티스트 (필수)", placeholder="예: 손담비")
     
     # 검색 버튼
     if st.button("🔍 검색", type="secondary"):
-        if not title:
-            st.error("곡 제목을 입력해주세요!")
+        if not title or not artist:
+            st.error("곡 제목과 아티스트를 모두 입력해주세요!")
         else:
-            from pipeline.crawl import search_song, filter_original_korean
+            crawl = _load_crawl_module()
             
             with st.spinner("검색 중..."):
-                query = f"{title} {artist}".strip()
-                results = search_song(query)
+                results = crawl.search_song(title=title, artist=artist)
                 
                 # 번역/로마자 필터링
-                filtered = filter_original_korean(results)
+                filtered = crawl.filter_original_korean(results)
                 if not filtered:
                     filtered = results
                 
@@ -288,8 +293,7 @@ with tab2:
         
         # 가사 가져오기 + 분류
         if selected and st.button("🎵 선택한 곡 가사 가져오기 + 분류", type="primary"):
-            from pipeline.crawl import search_song, filter_original_korean, get_lyrics
-            from pipeline.naver_search import find_korean_title
+            crawl = _load_crawl_module()
             from db.database import insert_bronze
             
             progress = st.progress(0)
@@ -308,106 +312,35 @@ with tab2:
                 try:
                     # 아티스트명 정리 (쉼표 → 띄어쓰기)
                     import re
-                    clean_artist = track['artist'].replace(',', ' ').replace('  ', ' ').strip()
-                    
-                    # 1. Genius 검색 (원래 제목으로)
-                    query = f"{track['title']} {track['artist']}"
-                    results = search_song(query)
-                    
-                    # 아티스트 매칭 필터링
-                    if results:
-                        artist_words = clean_artist.lower().split()
-                        matched_results = []
-                        for r in results:
-                            genius_artist = r.get('artist', '').lower()
-                            # 아티스트명 단어 중 하나라도 매칭되면 OK
-                            for word in artist_words:
-                                if len(word) >= 2 and word in genius_artist:
-                                    matched_results.append(r)
-                                    break
-                        
-                        if matched_results:
-                            filtered = filter_original_korean(matched_results)
-                            if not filtered:
-                                filtered = matched_results
-                        else:
-                            # 아티스트 매칭 실패 → 원본 결과 사용
-                            filtered = filter_original_korean(results)
-                            if not filtered:
-                                filtered = results
-                    else:
-                        filtered = []
-                    
-                    # 2. 검색 실패 시 → 네이버에서 한국어 제목 찾기
-                    used_korean_title = False
+                    clean_artist = re.sub(r"\s*,\s*", " ", track["artist"]).strip()
+
+                    if not clean_artist:
+                        fail_list.append({
+                            "track": track,
+                            "reason": "아티스트 정보가 없어 artist-first 검색 불가"
+                        })
+                        continue
+
+                    # artist-first exact 검색만 사용
+                    results = crawl.search_song(
+                        title=track["title"],
+                        artist=clean_artist,
+                        limit=20,
+                    )
+                    filtered = crawl.filter_original_korean(results)
                     if not filtered:
-                        status_text.write(f"처리 중: {track['title']} - 네이버에서 한국어 제목 검색...")
-                        
-                        # 제목에서 (Prod. by ...), (feat. ...) 등 제거
-                        clean_title = re.sub(r'\s*\([^)]*(?:Prod\.|feat\.|Feat\.|prod\.|ft\.)[^)]*\)', '', track['title']).strip()
-                        if not clean_title:
-                            clean_title = track['title']
-                        
-                        # 디버깅 로그
-                        print(f"[DEBUG] 원본 제목: {track['title']}")
-                        print(f"[DEBUG] 정리된 제목: {clean_title}")
-                        print(f"[DEBUG] 정리된 아티스트: {clean_artist}")
-                        
-                        korean_result = find_korean_title(clean_title, clean_artist)
-                        print(f"[DEBUG] 네이버 검색 결과: {korean_result}")
-                        
-                        if korean_result['found'] and korean_result['korean_title']:
-                            korean_title = korean_result['korean_title']
-                            
-                            print(f"[DEBUG] 한국어 제목으로 Genius 재검색: {korean_title}")
-                            
-                            # 한국어 제목으로 Genius 검색
-                            results = search_song(korean_title)
-                            print(f"[DEBUG] Genius 재검색 결과 수: {len(results) if results else 0}")
-                            
-                            # 결과에서 아티스트 매칭 시도
-                            if results:
-                                # 원본 아티스트명 정리 (소문자, 특수문자 제거)
-                                original_artists = clean_artist.lower().replace(' ', '')
-                                
-                                matched = None
-                                for r in results:
-                                    genius_artist = r.get('artist', '').lower().replace(' ', '').replace('(', '').replace(')', '')
-                                    
-                                    # 아티스트명 일부가 매칭되는지 확인
-                                    artist_words = clean_artist.lower().split()
-                                    for word in artist_words:
-                                        if len(word) >= 3 and word in genius_artist:
-                                            matched = r
-                                            print(f"[DEBUG] 아티스트 매칭 성공: {r['artist']}")
-                                            break
-                                    if matched:
-                                        break
-                                
-                                if matched:
-                                    filtered = [matched]
-                                else:
-                                    # 매칭 실패 시 첫 번째 결과 사용
-                                    print(f"[DEBUG] 아티스트 매칭 실패, 첫 번째 결과 사용")
-                                    filtered = filter_original_korean(results)
-                                    if not filtered:
-                                        filtered = results
-                            else:
-                                filtered = []
-                            
-                            used_korean_title = True
-                            print(f"[DEBUG] 최종 결과 수: {len(filtered) if filtered else 0}")
+                        filtered = results
                     
                     if not filtered:
                         fail_list.append({
                             "track": track,
-                            "reason": "Genius에서 검색 결과 없음 (네이버 검색도 실패)"
+                            "reason": "아티스트 기준 제목 exact 매칭 실패"
                         })
                         continue
                     
                     # 3. 가사 가져오기
                     best = filtered[0]
-                    lyrics = get_lyrics(song_url=best['url'])
+                    lyrics = crawl.get_lyrics(song_url=best['url'])
                     
                     if not lyrics:
                         fail_list.append({
@@ -431,7 +364,7 @@ with tab2:
                         "track": track,
                         "genius_title": best['title'],
                         "genius_artist": best['artist'],
-                        "used_korean_search": used_korean_title
+                        "used_korean_search": False
                     })
                     
                 except Exception as e:
