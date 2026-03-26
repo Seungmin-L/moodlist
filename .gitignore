@@ -17,3 +17,4 @@ env/
 .spotify_cache
 .cache
 /pipeline/__pycache__
+.DS_Store
