@@ -40,21 +40,14 @@ def _row_to_dict(cursor, row):
 
 
 def init_db():
-    """테이블 및 인덱스 초기화 (기존 테이블 삭제 후 재생성)"""
+    """테이블 및 인덱스 초기화 (없을 때만 생성)"""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 기존 테이블 삭제 (스키마 변경 시)
+    # 테이블이 이미 존재하면 스킵
     try:
-        cursor.execute("DROP TABLE songs CASCADE CONSTRAINTS")
-        conn.commit()
-        print("기존 songs 테이블 삭제")
-    except oracledb.DatabaseError:
-        pass
-
-    # songs 테이블 생성 (spotify_id PK)
-    cursor.execute("""
-        CREATE TABLE songs (
+        cursor.execute("""
+            CREATE TABLE songs (
             spotify_id      VARCHAR2(50)   NOT NULL PRIMARY KEY,
             title           VARCHAR2(500)  NOT NULL,
             artist          VARCHAR2(500)  NOT NULL,
@@ -75,21 +68,25 @@ def init_db():
             classified_at   TIMESTAMP
         )
     """)
+        conn.commit()
+        print("songs 테이블 생성 완료")
 
-    # 벡터 인덱스 생성
-    try:
-        cursor.execute("""
-            CREATE VECTOR INDEX idx_mood_embedding
-            ON songs(mood_embedding)
-            ORGANIZATION NEIGHBOR PARTITIONS
-            DISTANCE COSINE
-        """)
+        # 벡터 인덱스 생성
+        try:
+            cursor.execute("""
+                CREATE VECTOR INDEX idx_mood_embedding
+                ON songs(mood_embedding)
+                ORGANIZATION NEIGHBOR PARTITIONS
+                DISTANCE COSINE
+            """)
+            conn.commit()
+        except oracledb.DatabaseError:
+            pass
+
     except oracledb.DatabaseError:
-        pass
+        print("songs 테이블 이미 존재, 스킵")
 
-    conn.commit()
     conn.close()
-    print("Oracle DB 초기화 완료")
 
 
 # ======================
