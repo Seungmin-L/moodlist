@@ -23,12 +23,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
-try:
-    from db.database import insert_song as _insert_song
-    def insert_bronze(title, artist, raw_lyrics, source_url=None):
-        return _insert_song(title, artist, raw_lyrics, source_url)["song_id"]
-except ImportError:
-    pass
+def insert_bronze(title, artist, raw_lyrics, source_url=None):
+    pass  # Spotify-first 파이프라인으로 전환 후 미사용
 
 try:
     import lyricsgenius
