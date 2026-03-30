@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +50,13 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             silver_id INTEGER NOT NULL,
             category TEXT NOT NULL,
+            mood TEXT DEFAULT '',
+            mood_embedding TEXT DEFAULT '',
+            emotions TEXT DEFAULT '{}',
+            primary_emotion TEXT DEFAULT '',
+            emotional_arc TEXT DEFAULT '',
+            tags TEXT DEFAULT '[]',
+            narrative TEXT DEFAULT '',
             confidence REAL,
             classified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (silver_id) REFERENCES songs_silver(id)
@@ -75,6 +83,22 @@ def init_db():
         )
     """)
     
+    # 기존 songs_gold 테이블에 새 컬럼 추가 (마이그레이션)
+    new_columns = [
+        ("mood", "TEXT DEFAULT ''"),
+        ("mood_embedding", "TEXT DEFAULT ''"),
+        ("emotions", "TEXT DEFAULT '{}'"),
+        ("primary_emotion", "TEXT DEFAULT ''"),
+        ("emotional_arc", "TEXT DEFAULT ''"),
+        ("tags", "TEXT DEFAULT '[]'"),
+        ("narrative", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            cursor.execute(f"ALTER TABLE songs_gold ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # 이미 존재하는 컬럼
+
     conn.commit()
     conn.close()
     print(f"DB 초기화 완료: {DB_PATH}")
@@ -156,18 +180,44 @@ def get_silver_unclassified():
 # Gold 레이어 함수
 # ======================
 
-def insert_gold(silver_id: int, category: str, confidence: float = None):
+def insert_gold(silver_id: int, category: str, confidence: float = None,
+                 mood: str = "", mood_embedding: list = None, emotions: dict = None,
+                 primary_emotion: str = "", emotional_arc: str = "",
+                 tags: list = None, narrative: str = ""):
     """분류 결과 저장"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO songs_gold (silver_id, category, confidence)
-        VALUES (?, ?, ?)
-    """, (silver_id, category, confidence))
+        INSERT INTO songs_gold (silver_id, category, mood, mood_embedding, emotions,
+                                primary_emotion, emotional_arc, tags, narrative, confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (silver_id, category, mood,
+          json.dumps(mood_embedding or [], ensure_ascii=False),
+          json.dumps(emotions or {}, ensure_ascii=False),
+          primary_emotion, emotional_arc,
+          json.dumps(tags or [], ensure_ascii=False),
+          narrative, confidence))
     conn.commit()
     gold_id = cursor.lastrowid
     conn.close()
     return gold_id
+
+
+def get_all_mood_embeddings():
+    """모든 곡의 mood 임베딩 조회"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT g.id, g.mood, g.mood_embedding, g.category,
+               b.title, b.artist
+        FROM songs_gold g
+        JOIN songs_silver s ON g.silver_id = s.id
+        JOIN songs_bronze b ON s.bronze_id = b.id
+        WHERE g.mood_embedding != '' AND g.mood_embedding != '[]'
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def get_songs_by_category(category: str = None):
@@ -177,7 +227,9 @@ def get_songs_by_category(category: str = None):
     
     if category:
         cursor.execute("""
-            SELECT g.id, g.category, g.confidence, g.classified_at,
+            SELECT g.id, g.category, g.mood, g.emotions,
+                   g.primary_emotion, g.emotional_arc, g.tags, g.narrative,
+                   g.confidence, g.classified_at,
                    s.clean_lyrics, b.title, b.artist
             FROM songs_gold g
             JOIN songs_silver s ON g.silver_id = s.id
@@ -187,7 +239,9 @@ def get_songs_by_category(category: str = None):
         """, (category,))
     else:
         cursor.execute("""
-            SELECT g.id, g.category, g.confidence, g.classified_at,
+            SELECT g.id, g.category, g.mood, g.emotions,
+                   g.primary_emotion, g.emotional_arc, g.tags, g.narrative,
+                   g.confidence, g.classified_at,
                    s.clean_lyrics, b.title, b.artist
             FROM songs_gold g
             JOIN songs_silver s ON g.silver_id = s.id
