@@ -104,7 +104,9 @@ def insert_song(title: str, artist: str, lyrics: str = None, source_url: str = N
             VALUES (:1, :2, :3, :4)
             RETURNING id INTO :5
         """, [title, artist, lyrics, source_url, id_var])
-        song_id = id_var.getvalue(0)
+        song_id = id_var.getvalue()
+        if isinstance(song_id, list):
+            song_id = song_id[0]
         conn.commit()
         return {"song_id": int(song_id), "already_exists": False, "status": "pending"}
 
