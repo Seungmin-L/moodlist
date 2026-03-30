@@ -35,7 +35,7 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
         </div>
         <div className={styles.inputWrap}>
           <input
-            className={styles.input}
+            className={`${styles.input} ${styles.inputNoIcon}`}
             type="text"
             placeholder="아티스트 입력..."
             value={artist}

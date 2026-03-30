@@ -41,7 +41,7 @@
   transition: box-shadow var(--transition);
 }
 
-.inputWrap:has(.input:not(:first-child)) .input {
+.inputNoIcon {
   padding-left: var(--space-lg);
 }
 
