@@ -19,7 +19,7 @@ from db.database import (
 )
 from pipeline.crawl import crawl_and_save
 from pipeline.clean import process_bronze_to_silver
-from pipeline.classify import process_silver_to_gold, CATEGORIES
+from pipeline.classify import process_silver_to_gold
 
 
 def _load_crawl_module():
@@ -164,9 +164,12 @@ with tab1:
                         status.update(label="완료!", state="complete")
                         
                         # 결과 표시
-                        st.success(f"**{item['title']}** - {item['artist']}")
-                        st.info(f"📂 카테고리: **{item['category']}** (확신도: {item['confidence']:.0%})")
-                        st.caption(f"💬 {item['reason']}")
+                        st.info(f"📂 [{item['category']}] {item.get('mood', '')}")
+                        st.write(f"**감정**: {item['primary_emotion']} ({item['confidence']:.0%})")
+                        if item.get('emotions'):
+                            emotions_str = ", ".join([f"{k}: {v:.0%}" for k, v in item['emotions'].items()])
+                            st.caption(f"🎭 {emotions_str}")
+                        st.caption(f"📝 {item.get('narrative', '')}")
                         
                         # 상태 초기화
                         st.session_state['search_results'] = []
@@ -393,13 +396,13 @@ with tab2:
             if classified:
                 st.subheader("📊 분류 결과")
                 
-                # 카테고리별로 그룹핑
+                # 무드별로 그룹핑
                 by_category = {}
                 for item in classified:
-                    cat = item['category']
-                    if cat not in by_category:
-                        by_category[cat] = []
-                    by_category[cat].append(item)
+                    key = f"[{item['category']}] {item.get('mood', '')}"
+                    if key not in by_category:
+                        by_category[key] = []
+                    by_category[key].append(item)
                 
                 for cat, items in by_category.items():
                     with st.expander(f"**{cat}** ({len(items)}곡)", expanded=True):
