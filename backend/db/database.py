@@ -117,9 +117,20 @@ def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, so
         return {"spotify_id": spotify_id, "already_exists": False, "status": "pending"}
 
     except oracledb.IntegrityError:
+        # 기존 곡이면 album_art_url이 비어 있을 때만 보강 업데이트
+        if album_art_url:
+            cursor.execute("""
+                UPDATE songs
+                SET album_art_url = :1
+                WHERE spotify_id = :2
+                  AND (album_art_url IS NULL OR TRIM(album_art_url) = '')
+            """, [album_art_url, spotify_id])
+            conn.commit()
+
         cursor.execute("""
             SELECT spotify_id, category, mood, emotions, primary_emotion,
-                   emotional_arc, tags, narrative, confidence, status, error_message
+                   emotional_arc, tags, narrative, confidence, status, error_message,
+                   album_art_url
             FROM songs
             WHERE spotify_id = :1
         """, [spotify_id])

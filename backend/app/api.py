@@ -89,6 +89,15 @@ async def add_song(req: AddSongRequest):
             result = add_and_classify_by_id(req.spotify_id, req.title, req.artist, image_url=req.image_url)
         else:
             result = add_and_classify(req.title, req.artist)
+
+        # 최종 저장 상태를 DB에서 다시 읽어 내려준다 (album_art_url 포함 보장)
+        spotify_id = result.get("spotify_id")
+        song = get_song(spotify_id) if spotify_id else None
+        if song:
+            return {
+                "already_exists": result.get("already_exists", False),
+                **song
+            }
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
