@@ -1,7 +1,7 @@
 """
 Oracle Cloud ATP 기반 DB 모듈
 
-- songs 단일 테이블 (Bronze/Silver/Gold 통합)
+- songs 단일 테이블 (Spotify ID를 PK로 사용)
 - Oracle 23ai VECTOR 타입으로 mood 임베딩 저장
 - VECTOR_DISTANCE로 유사곡 검색
 """
@@ -32,7 +32,6 @@ def _row_to_dict(cursor, row):
     columns = [col[0].lower() for col in cursor.description]
     result = {}
     for col, val in zip(columns, row):
-        # Oracle CLOB → str 변환
         if hasattr(val, 'read'):
             val = val.read()
         result[col] = val
@@ -40,14 +39,22 @@ def _row_to_dict(cursor, row):
 
 
 def init_db():
-    """테이블 및 인덱스 초기화"""
+    """테이블 및 인덱스 초기화 (기존 테이블 삭제 후 재생성)"""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # songs 테이블 생성
+    # 기존 테이블 삭제 (스키마 변경 시)
+    try:
+        cursor.execute("DROP TABLE songs CASCADE CONSTRAINTS")
+        conn.commit()
+        print("기존 songs 테이블 삭제")
+    except oracledb.DatabaseError:
+        pass
+
+    # songs 테이블 생성 (spotify_id PK)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS songs (
-            id              NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        CREATE TABLE songs (
+            spotify_id      VARCHAR2(50)   NOT NULL PRIMARY KEY,
             title           VARCHAR2(500)  NOT NULL,
             artist          VARCHAR2(500)  NOT NULL,
             lyrics          CLOB,
@@ -64,21 +71,20 @@ def init_db():
             status          VARCHAR2(20)   DEFAULT 'pending',
             error_message   CLOB,
             created_at      TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
-            classified_at   TIMESTAMP,
-            CONSTRAINT uq_title_artist UNIQUE (title, artist)
+            classified_at   TIMESTAMP
         )
     """)
 
-    # 벡터 인덱스 생성 (유사도 검색 고속화)
+    # 벡터 인덱스 생성
     try:
         cursor.execute("""
-            CREATE VECTOR INDEX IF NOT EXISTS idx_mood_embedding
+            CREATE VECTOR INDEX idx_mood_embedding
             ON songs(mood_embedding)
             ORGANIZATION NEIGHBOR PARTITIONS
             DISTANCE COSINE
         """)
     except oracledb.DatabaseError:
-        pass  # 이미 존재
+        pass
 
     conn.commit()
     conn.close()
@@ -89,7 +95,7 @@ def init_db():
 # 곡 추가 / 조회
 # ======================
 
-def insert_song(title: str, artist: str, lyrics: str = None, source_url: str = None) -> dict:
+def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, source_url: str = None) -> dict:
     """
     곡 추가.
     이미 있으면 기존 레코드 반환 (already_exists=True).
@@ -98,29 +104,22 @@ def insert_song(title: str, artist: str, lyrics: str = None, source_url: str = N
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        id_var = cursor.var(oracledb.NUMBER)
         cursor.execute("""
-            INSERT INTO songs (title, artist, lyrics, source_url)
-            VALUES (:1, :2, :3, :4)
-            RETURNING id INTO :5
-        """, [title, artist, lyrics, source_url, id_var])
-        song_id = id_var.getvalue()
-        if isinstance(song_id, list):
-            song_id = song_id[0]
+            INSERT INTO songs (spotify_id, title, artist, lyrics, source_url)
+            VALUES (:1, :2, :3, :4, :5)
+        """, [spotify_id, title, artist, lyrics, source_url])
         conn.commit()
-        return {"song_id": int(song_id), "already_exists": False, "status": "pending"}
+        return {"spotify_id": spotify_id, "already_exists": False, "status": "pending"}
 
     except oracledb.IntegrityError:
-        # 이미 존재하는 곡 → 기존 레코드 반환
         cursor.execute("""
-            SELECT id, category, mood, emotions, primary_emotion,
+            SELECT spotify_id, category, mood, emotions, primary_emotion,
                    emotional_arc, tags, narrative, confidence, status, error_message
             FROM songs
-            WHERE title = :1 AND artist = :2
-        """, [title, artist])
+            WHERE spotify_id = :1
+        """, [spotify_id])
         row = cursor.fetchone()
         result = _row_to_dict(cursor, row)
-        result["song_id"] = int(result.pop("id"))
         result["already_exists"] = True
         if result.get("emotions"):
             result["emotions"] = json.loads(result["emotions"])
@@ -131,18 +130,16 @@ def insert_song(title: str, artist: str, lyrics: str = None, source_url: str = N
         conn.close()
 
 
-def update_lyrics(song_id: int, lyrics: str):
+def update_lyrics(spotify_id: str, lyrics: str):
     """가사 업데이트"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE songs SET lyrics = :1 WHERE id = :2
-    """, [lyrics, song_id])
+    cursor.execute("UPDATE songs SET lyrics = :1 WHERE spotify_id = :2", [lyrics, spotify_id])
     conn.commit()
     conn.close()
 
 
-def update_classification(song_id: int, result: dict = None, error: str = None):
+def update_classification(spotify_id: str, result: dict = None, error: str = None):
     """
     분류 결과 저장.
     result가 있으면 status='classified',
@@ -155,8 +152,8 @@ def update_classification(song_id: int, result: dict = None, error: str = None):
         cursor.execute("""
             UPDATE songs
             SET status = 'error', error_message = :1
-            WHERE id = :2
-        """, [error, song_id])
+            WHERE spotify_id = :2
+        """, [error, spotify_id])
     else:
         embedding = result.get("mood_embedding") or []
         oracle_vector = array.array('d', embedding) if embedding else None
@@ -175,7 +172,7 @@ def update_classification(song_id: int, result: dict = None, error: str = None):
                 status          = 'classified',
                 error_message   = NULL,
                 classified_at   = CURRENT_TIMESTAMP
-            WHERE id = :10
+            WHERE spotify_id = :10
         """, [
             result.get("category", "기타"),
             result.get("mood", ""),
@@ -186,7 +183,7 @@ def update_classification(song_id: int, result: dict = None, error: str = None):
             json.dumps(result.get("tags", []), ensure_ascii=False),
             result.get("narrative", ""),
             result.get("confidence", 0.0),
-            song_id
+            spotify_id
         ])
 
     conn.commit()
@@ -198,7 +195,7 @@ def get_pending_songs() -> list:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, title, artist, lyrics, status, error_message
+        SELECT spotify_id, title, artist, lyrics, status, error_message
         FROM songs
         WHERE status IN ('pending', 'error')
         ORDER BY created_at
@@ -209,16 +206,16 @@ def get_pending_songs() -> list:
     return result
 
 
-def get_song(song_id: int) -> dict | None:
+def get_song(spotify_id: str) -> dict | None:
     """단일 곡 조회"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, title, artist, lyrics, source_url, category, mood,
+        SELECT spotify_id, title, artist, lyrics, source_url, category, mood,
                emotions, primary_emotion, emotional_arc, tags, narrative,
                confidence, status, error_message, created_at, classified_at
-        FROM songs WHERE id = :1
-    """, [song_id])
+        FROM songs WHERE spotify_id = :1
+    """, [spotify_id])
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -238,7 +235,7 @@ def get_songs_by_category(category: str = None) -> list:
     cursor = conn.cursor()
     if category:
         cursor.execute("""
-            SELECT id, title, artist, category, mood, emotions,
+            SELECT spotify_id, title, artist, category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
                    confidence, status, classified_at
             FROM songs
@@ -247,7 +244,7 @@ def get_songs_by_category(category: str = None) -> list:
         """, [category])
     else:
         cursor.execute("""
-            SELECT id, title, artist, category, mood, emotions,
+            SELECT spotify_id, title, artist, category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
                    confidence, status, classified_at
             FROM songs
@@ -284,15 +281,12 @@ def get_all_categories() -> list:
 # 벡터 유사도 검색
 # ======================
 
-def find_similar_songs(song_id: int, top_k: int = 10) -> list:
+def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
     """Oracle VECTOR_DISTANCE로 유사곡 검색"""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 기준 곡 임베딩 조회
-    cursor.execute("""
-        SELECT mood_embedding FROM songs WHERE id = :1
-    """, [song_id])
+    cursor.execute("SELECT mood_embedding FROM songs WHERE spotify_id = :1", [spotify_id])
     row = cursor.fetchone()
     if not row or row[0] is None:
         conn.close()
@@ -301,15 +295,15 @@ def find_similar_songs(song_id: int, top_k: int = 10) -> list:
     query_vector = row[0]
 
     cursor.execute("""
-        SELECT id, title, artist, mood, category,
+        SELECT spotify_id, title, artist, mood, category,
                VECTOR_DISTANCE(mood_embedding, :1, COSINE) AS similarity
         FROM songs
         WHERE status = 'classified'
           AND mood_embedding IS NOT NULL
-          AND id != :2
+          AND spotify_id != :2
         ORDER BY similarity
         FETCH FIRST :3 ROWS ONLY
-    """, [query_vector, song_id, top_k])
+    """, [query_vector, spotify_id, top_k])
 
     rows = cursor.fetchall()
     result = [_row_to_dict(cursor, row) for row in rows]
@@ -320,14 +314,12 @@ def find_similar_songs(song_id: int, top_k: int = 10) -> list:
 def group_songs_by_mood(top_k_per_group: int = 20) -> list:
     """
     mood 기준 대표 곡들을 뽑고, 각 대표 곡과 유사한 곡들로 그룹 구성.
-    Oracle VECTOR_DISTANCE 사용.
     """
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 분류된 전체 곡 ID, mood 조회
     cursor.execute("""
-        SELECT id, title, artist, mood, category
+        SELECT spotify_id, title, artist, mood, category
         FROM songs
         WHERE status = 'classified' AND mood_embedding IS NOT NULL
         ORDER BY classified_at
@@ -342,29 +334,26 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
     grouped_ids = set()
 
     for song in all_songs:
-        if song["id"] in grouped_ids:
+        if song["spotify_id"] in grouped_ids:
             continue
 
-        # 이 곡을 대표로, 유사곡 검색
         cursor.execute("""
-            SELECT id, title, artist, mood, category,
+            SELECT spotify_id, title, artist, mood, category,
                    VECTOR_DISTANCE(mood_embedding,
-                       (SELECT mood_embedding FROM songs WHERE id = :1),
+                       (SELECT mood_embedding FROM songs WHERE spotify_id = :1),
                        COSINE) AS similarity
             FROM songs
             WHERE status = 'classified'
               AND mood_embedding IS NOT NULL
             ORDER BY similarity
             FETCH FIRST :2 ROWS ONLY
-        """, [song["id"], top_k_per_group])
+        """, [song["spotify_id"], top_k_per_group])
 
         group_songs = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-
-        # similarity 0.2 이하만 같은 그룹 (코사인 거리 기준, 낮을수록 유사)
         similar = [s for s in group_songs if s.get("similarity", 1) <= 0.2]
 
         for s in similar:
-            grouped_ids.add(s["id"])
+            grouped_ids.add(s["spotify_id"])
 
         groups.append({
             "mood": song["mood"],
@@ -388,9 +377,7 @@ def get_stats() -> dict:
     cursor.execute("SELECT COUNT(*) FROM songs")
     total = cursor.fetchone()[0]
 
-    cursor.execute("""
-        SELECT status, COUNT(*) FROM songs GROUP BY status
-    """)
+    cursor.execute("SELECT status, COUNT(*) FROM songs GROUP BY status")
     status_dist = {row[0]: row[1] for row in cursor.fetchall()}
 
     cursor.execute("""
