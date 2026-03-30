@@ -290,12 +290,11 @@ def search_track(title: str, artist: str = "") -> dict:
     """
     sp = get_spotify_client_simple()
 
-    query = f"track:{title}"
+    query = f'track:"{title}"'
     if artist:
-        query += f" artist:{artist}"
+        query += f' artist:"{artist}"'
 
     results = sp.search(q=query, type="track", limit=5)
-
     tracks = results.get("tracks", {}).get("items", [])
     if not tracks:
         return None

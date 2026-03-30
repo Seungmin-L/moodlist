@@ -241,6 +241,42 @@ def add_and_classify(title: str, artist: str) -> dict:
     }
 
 
+def add_and_classify_by_id(spotify_id: str, title: str, artist: str) -> dict:
+    """
+    Spotify ID가 확정된 곡 추가 + 분류 (Spotify 검색 스킵).
+    유저가 suggestions에서 직접 선택한 경우 사용.
+    """
+    db_result = insert_song(spotify_id, title, artist)
+    if db_result["already_exists"] and db_result.get("status") == "classified":
+        print(f"이미 분류된 곡: {title} - {artist}")
+        return db_result
+
+    results, diagnostics = search_song_with_diagnostics(title=title, artist=artist, limit=20)
+    filtered = filter_original_korean(results) or results
+
+    if not filtered:
+        error_msg = f"Genius에서 가사를 찾을 수 없음: {title} - {artist}"
+        update_classification(spotify_id, error=error_msg)
+        raise ValueError(error_msg)
+
+    lyrics = get_lyrics(song_url=filtered[0]["url"])
+    if not lyrics:
+        error_msg = "가사를 가져올 수 없음"
+        update_classification(spotify_id, error=error_msg)
+        raise ValueError(error_msg)
+
+    update_lyrics(spotify_id, lyrics)
+    classification = classify_song(spotify_id)
+
+    return {
+        "spotify_id": spotify_id,
+        "title": title,
+        "artist": artist,
+        "already_exists": db_result["already_exists"],
+        **classification
+    }
+
+
 def classify_pending_songs() -> list:
     """pending/error 상태 곡 일괄 분류"""
     pending = get_pending_songs()

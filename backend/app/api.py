@@ -58,6 +58,7 @@ app.add_middleware(
 class AddSongRequest(BaseModel):
     title: str
     artist: str
+    spotify_id: Optional[str] = None  # 제공 시 Spotify 검색 스킵
 
 class SpotifyImportRequest(BaseModel):
     playlist_url: str
@@ -82,7 +83,11 @@ async def add_song(req: AddSongRequest):
     3. 신규 곡은 Genius에서 가사 크롤링 후 GPT 분류
     """
     try:
-        result = add_and_classify(req.title, req.artist)
+        from pipeline.classify import add_and_classify_by_id
+        if req.spotify_id:
+            result = add_and_classify_by_id(req.spotify_id, req.title, req.artist)
+        else:
+            result = add_and_classify(req.title, req.artist)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -256,6 +261,27 @@ async def spotify_export(req: SpotifyExportRequest):
         "playlist_url": playlist.get("url"),
         "added": len(track_uris)
     }
+
+
+@app.get("/search/suggestions", summary="Spotify 실시간 검색 제안")
+async def search_suggestions(q: str = Query(..., min_length=1)):
+    """입력 중인 쿼리로 Spotify 트랙 검색 (앨범 아트 포함)"""
+    from pipeline.spotify import get_spotify_client_simple
+    try:
+        sp = get_spotify_client_simple()
+        results = sp.search(q=q, type="track", limit=7)
+        tracks = results.get("tracks", {}).get("items", [])
+        return [
+            {
+                "spotify_id": t["id"],
+                "title": t["name"],
+                "artist": ", ".join(a["name"] for a in t["artists"]),
+                "image_url": t["album"]["images"][-1]["url"] if t["album"]["images"] else None,
+            }
+            for t in tracks
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/spotify/auth", summary="Spotify 로그인 상태 확인")
