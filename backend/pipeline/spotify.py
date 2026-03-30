@@ -271,26 +271,39 @@ def add_tracks_to_playlist(playlist_id: str, track_uris: list) -> bool:
     return True
 
 
+_COVER_KEYWORDS = [
+    "karaoke", "cover", "tribute", "instrumental", "originally performed",
+    "made famous", "in the style of", "backing track", "minus one",
+    "카라오케", "커버", "MR", "반주",
+]
+
+def _is_cover(track: dict) -> bool:
+    name = track.get("name", "").lower()
+    artists = " ".join(a["name"] for a in track.get("artists", [])).lower()
+    return any(kw.lower() in name or kw.lower() in artists for kw in _COVER_KEYWORDS)
+
+
 def search_track(title: str, artist: str = "") -> dict:
     """
-    Spotify에서 곡 검색
+    Spotify에서 곡 검색 (카라오케/커버 버전 필터링)
     Returns: {"id": ..., "uri": ..., "title": ..., "artist": ...} or None
     """
     sp = get_spotify_client_simple()
-    
+
     query = f"track:{title}"
     if artist:
         query += f" artist:{artist}"
-    
-    results = sp.search(q=query, type="track", limit=1)
-    
+
+    results = sp.search(q=query, type="track", limit=5)
+
     tracks = results.get("tracks", {}).get("items", [])
     if not tracks:
         return None
-    
-    track = tracks[0]
+
+    # 카라오케/커버 아닌 첫 번째 결과 선택, 없으면 첫 번째
+    track = next((t for t in tracks if not _is_cover(t)), tracks[0])
     artists = ", ".join([a["name"] for a in track.get("artists", [])])
-    
+
     return {
         "id": track["id"],
         "uri": track["uri"],
