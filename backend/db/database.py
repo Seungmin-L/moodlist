@@ -64,6 +64,7 @@ def init_db():
             confidence      NUMBER(3,2),
             status          VARCHAR2(20)   DEFAULT 'pending',
             error_message   CLOB,
+            album_art_url   VARCHAR2(1000),
             created_at      TIMESTAMP      DEFAULT CURRENT_TIMESTAMP,
             classified_at   TIMESTAMP
         )
@@ -84,7 +85,13 @@ def init_db():
             pass
 
     except oracledb.DatabaseError:
-        print("songs 테이블 이미 존재, 스킵")
+        # 테이블 이미 존재 — album_art_url 컬럼 없으면 추가
+        try:
+            cursor.execute("ALTER TABLE songs ADD (album_art_url VARCHAR2(1000))")
+            conn.commit()
+            print("album_art_url 컬럼 추가 완료")
+        except oracledb.DatabaseError:
+            pass  # 이미 있으면 스킵
 
     conn.close()
 
@@ -93,7 +100,7 @@ def init_db():
 # 곡 추가 / 조회
 # ======================
 
-def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, source_url: str = None) -> dict:
+def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, source_url: str = None, album_art_url: str = None) -> dict:
     """
     곡 추가.
     이미 있으면 기존 레코드 반환 (already_exists=True).
@@ -103,9 +110,9 @@ def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, so
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO songs (spotify_id, title, artist, lyrics, source_url)
-            VALUES (:1, :2, :3, :4, :5)
-        """, [spotify_id, title, artist, lyrics, source_url])
+            INSERT INTO songs (spotify_id, title, artist, lyrics, source_url, album_art_url)
+            VALUES (:1, :2, :3, :4, :5, :6)
+        """, [spotify_id, title, artist, lyrics, source_url, album_art_url])
         conn.commit()
         return {"spotify_id": spotify_id, "already_exists": False, "status": "pending"}
 
@@ -211,7 +218,7 @@ def get_song(spotify_id: str) -> dict | None:
     cursor.execute("""
         SELECT spotify_id, title, artist, lyrics, source_url, category, mood,
                emotions, primary_emotion, emotional_arc, tags, narrative,
-               confidence, status, error_message, created_at, classified_at
+               confidence, status, error_message, album_art_url, created_at, classified_at
         FROM songs WHERE spotify_id = :1
     """, [spotify_id])
     row = cursor.fetchone()
@@ -235,7 +242,7 @@ def get_songs_by_category(category: str = None) -> list:
         cursor.execute("""
             SELECT spotify_id, title, artist, category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
-                   confidence, status, classified_at
+                   confidence, status, album_art_url, classified_at
             FROM songs
             WHERE status = 'classified' AND category = :1
             ORDER BY classified_at DESC
@@ -244,7 +251,7 @@ def get_songs_by_category(category: str = None) -> list:
         cursor.execute("""
             SELECT spotify_id, title, artist, category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
-                   confidence, status, classified_at
+                   confidence, status, album_art_url, classified_at
             FROM songs
             WHERE status = 'classified'
             ORDER BY classified_at DESC
@@ -293,7 +300,7 @@ def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
     query_vector = row[0]
 
     cursor.execute("""
-        SELECT spotify_id, title, artist, mood, category,
+        SELECT spotify_id, title, artist, mood, category, album_art_url,
                VECTOR_DISTANCE(mood_embedding, :1, COSINE) AS similarity
         FROM songs
         WHERE status = 'classified'
@@ -317,7 +324,7 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT spotify_id, title, artist, mood, category
+        SELECT spotify_id, title, artist, mood, category, album_art_url
         FROM songs
         WHERE status = 'classified' AND mood_embedding IS NOT NULL
         ORDER BY classified_at
@@ -336,7 +343,7 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
             continue
 
         cursor.execute("""
-            SELECT spotify_id, title, artist, mood, category,
+            SELECT spotify_id, title, artist, mood, category, album_art_url,
                    VECTOR_DISTANCE(mood_embedding,
                        (SELECT mood_embedding FROM songs WHERE spotify_id = :1),
                        COSINE) AS similarity

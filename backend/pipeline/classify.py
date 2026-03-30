@@ -204,11 +204,12 @@ def add_and_classify(title: str, artist: str) -> dict:
     spotify_id = spotify_result["id"]
     en_title = spotify_result["title"]
     en_artist = spotify_result["artist"]
+    image_url = spotify_result.get("image_url")
 
     print(f"Spotify 매칭: '{title} - {artist}' → '{en_title} - {en_artist}'")
 
     # 2. DB 중복 확인
-    db_result = insert_song(spotify_id, en_title, en_artist)
+    db_result = insert_song(spotify_id, en_title, en_artist, album_art_url=image_url)
     if db_result["already_exists"] and db_result.get("status") == "classified":
         print(f"이미 분류된 곡: {en_title} - {en_artist}")
         return db_result
@@ -241,12 +242,12 @@ def add_and_classify(title: str, artist: str) -> dict:
     }
 
 
-def add_and_classify_by_id(spotify_id: str, title: str, artist: str) -> dict:
+def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: str = None) -> dict:
     """
     Spotify ID가 확정된 곡 추가 + 분류 (Spotify 검색 스킵).
     유저가 suggestions에서 직접 선택한 경우 사용.
     """
-    db_result = insert_song(spotify_id, title, artist)
+    db_result = insert_song(spotify_id, title, artist, album_art_url=image_url)
     if db_result["already_exists"] and db_result.get("status") == "classified":
         print(f"이미 분류된 곡: {title} - {artist}")
         return db_result

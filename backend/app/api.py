@@ -58,7 +58,8 @@ app.add_middleware(
 class AddSongRequest(BaseModel):
     title: str
     artist: str
-    spotify_id: Optional[str] = None  # 제공 시 Spotify 검색 스킵
+    spotify_id: Optional[str] = None
+    image_url: Optional[str] = None
 
 class SpotifyImportRequest(BaseModel):
     playlist_url: str
@@ -85,7 +86,7 @@ async def add_song(req: AddSongRequest):
     try:
         from pipeline.classify import add_and_classify_by_id
         if req.spotify_id:
-            result = add_and_classify_by_id(req.spotify_id, req.title, req.artist)
+            result = add_and_classify_by_id(req.spotify_id, req.title, req.artist, image_url=req.image_url)
         else:
             result = add_and_classify(req.title, req.artist)
         return result

@@ -303,11 +303,15 @@ def search_track(title: str, artist: str = "") -> dict:
     track = next((t for t in tracks if not _is_cover(t)), tracks[0])
     artists = ", ".join([a["name"] for a in track.get("artists", [])])
 
+    images = track.get("album", {}).get("images", [])
+    image_url = images[-1]["url"] if images else None  # 가장 작은 썸네일
+
     return {
         "id": track["id"],
         "uri": track["uri"],
         "title": track["name"],
-        "artist": artists
+        "artist": artists,
+        "image_url": image_url,
     }
 
 
