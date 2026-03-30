@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Moodlist API",
     description="가사 기반 곡 분류 + 플레이리스트 생성",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -74,11 +74,12 @@ class SpotifyExportRequest(BaseModel):
 # ======================
 
 @app.post("/songs", summary="곡 추가 + 분류")
-async def add_song(req: AddSongRequest, background_tasks: BackgroundTasks):
+async def add_song(req: AddSongRequest):
     """
     곡 추가 후 분류.
-    이미 분류된 곡이면 기존 결과 즉시 반환.
-    신규 곡은 백그라운드에서 분류 후 /songs/{id}로 결과 조회 가능.
+    1. Spotify에서 곡 검색 → spotify_id + 영어 제목/아티스트 확보
+    2. 이미 분류된 곡이면 기존 결과 즉시 반환
+    3. 신규 곡은 Genius에서 가사 크롤링 후 GPT 분류
     """
     try:
         result = add_and_classify(req.title, req.artist)
@@ -101,30 +102,30 @@ async def list_pending():
     return get_pending_songs()
 
 
-@app.get("/songs/{song_id}", summary="곡 상세 조회")
-async def get_song_detail(song_id: int):
-    song = get_song(song_id)
+@app.get("/songs/{spotify_id}", summary="곡 상세 조회")
+async def get_song_detail(spotify_id: str):
+    song = get_song(spotify_id)
     if not song:
-        raise HTTPException(status_code=404, detail=f"Song {song_id} 없음")
+        raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
     return song
 
 
-@app.get("/songs/{song_id}/similar", summary="유사곡 검색")
+@app.get("/songs/{spotify_id}/similar", summary="유사곡 검색")
 async def similar_songs(
-    song_id: int,
+    spotify_id: str,
     top_k: int = Query(10, ge=1, le=50, description="반환할 유사곡 수")
 ):
     """mood 임베딩 벡터 유사도 기반 유사곡 검색"""
-    song = get_song(song_id)
+    song = get_song(spotify_id)
     if not song:
-        raise HTTPException(status_code=404, detail=f"Song {song_id} 없음")
+        raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
     if song.get("status") != "classified":
         raise HTTPException(status_code=400, detail="아직 분류되지 않은 곡입니다")
 
-    similar = find_similar_songs(song_id, top_k=top_k)
+    similar = find_similar_songs(spotify_id, top_k=top_k)
     return {
         "base_song": {
-            "id": song["id"],
+            "spotify_id": song["spotify_id"],
             "title": song["title"],
             "artist": song["artist"],
             "mood": song.get("mood")
@@ -133,25 +134,24 @@ async def similar_songs(
     }
 
 
-@app.post("/songs/{song_id}/reclassify", summary="재분류")
-async def reclassify_song(song_id: int):
-    """error 상태 곡 재분류 시도"""
-    song = get_song(song_id)
+@app.post("/songs/{spotify_id}/reclassify", summary="재분류")
+async def reclassify_song(spotify_id: str):
+    """분류 결과 재분류"""
+    song = get_song(spotify_id)
     if not song:
-        raise HTTPException(status_code=404, detail=f"Song {song_id} 없음")
+        raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
 
-    # status를 pending으로 되돌리고 재분류
     from db.database import get_connection
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE songs SET status = 'pending' WHERE id = :1", [song_id])
+    cursor.execute("UPDATE songs SET status = 'pending' WHERE spotify_id = :1", [spotify_id])
     conn.commit()
     conn.close()
 
     from pipeline.classify import classify_song
     try:
-        result = classify_song(song_id)
-        return {"song_id": song_id, **result}
+        result = classify_song(spotify_id)
+        return {"spotify_id": spotify_id, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -196,7 +196,7 @@ async def spotify_import(req: SpotifyImportRequest):
                 "artist": track["artist"],
                 "status": "ok",
                 "already_exists": result.get("already_exists", False),
-                "song_id": result.get("song_id"),
+                "spotify_id": result.get("spotify_id"),
                 "mood": result.get("mood"),
                 "category": result.get("category")
             })
@@ -223,10 +223,10 @@ async def spotify_import(req: SpotifyImportRequest):
 async def spotify_export(req: SpotifyExportRequest):
     """
     특정 mood 곡들을 Spotify 플레이리스트로 생성.
+    spotify_id를 직접 사용하므로 검색 단계 스킵.
     """
-    from pipeline.spotify import create_playlist, search_track, add_tracks_to_playlist
+    from pipeline.spotify import create_playlist, add_tracks_to_playlist
 
-    # mood 기반 그룹에서 해당 mood 곡 찾기
     groups = group_songs_by_mood()
     target_songs = []
     for group in groups:
@@ -246,27 +246,19 @@ async def spotify_export(req: SpotifyExportRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"플레이리스트 생성 실패: {e}")
 
-    track_uris = []
-    not_found = []
-    for song in target_songs:
-        found = search_track(song["title"], song["artist"])
-        if found:
-            track_uris.append(found["uri"])
-        else:
-            not_found.append(song)
+    # spotify_id로 바로 URI 생성 (검색 불필요)
+    track_uris = [f"spotify:track:{song['spotify_id']}" for song in target_songs]
 
     if track_uris:
         add_tracks_to_playlist(playlist["id"], track_uris)
 
     return {
         "playlist_url": playlist.get("url"),
-        "added": len(track_uris),
-        "not_found": len(not_found),
-        "not_found_songs": [{"title": s["title"], "artist": s["artist"]} for s in not_found]
+        "added": len(track_uris)
     }
 
 
-@app.get("/spotify/auth", summary="Spotify OAuth 로그인 URL")
+@app.get("/spotify/auth", summary="Spotify 로그인 상태 확인")
 async def spotify_auth():
     from pipeline.spotify import get_spotify_client_oauth
     try:
