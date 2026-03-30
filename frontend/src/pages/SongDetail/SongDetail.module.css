@@ -56,13 +56,14 @@
   padding: var(--space-lg);
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-lg);
 }
 
 .cardTop {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--space-md);
-  align-items: center;
+  align-items: start;
 }
 
 .info {
@@ -70,19 +71,20 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-
-.badges {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .confidence {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-purple);
+}
+
+.metaLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .title {
@@ -97,57 +99,39 @@
   color: var(--color-text-sub);
 }
 
-.arc {
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-.moodBlock {
-  background: rgba(139,92,246,0.06);
-  border-left: 3px solid var(--color-purple);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  padding: var(--space-sm) var(--space-md);
-}
-
-.moodLabel {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--color-purple);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.mood {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--color-text);
-  font-style: italic;
-}
-
-.spotifyRow { display: flex; }
-
-.spotifyBtn {
+.spotifyBtnTop {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 44px;
-  padding: 0 var(--space-lg);
+  height: 40px;
+  padding: 0 14px;
   background: #1DB954;
   border-radius: var(--btn-radius);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #fff;
-  box-shadow: 4px 4px 12px rgba(29,185,84,0.3);
+  white-space: nowrap;
+  box-shadow: 3px 3px 10px rgba(29,185,84,0.25);
   transition: all var(--transition);
   touch-action: manipulation;
 }
 
-.spotifyBtn:hover {
+.spotifyBtnTop:hover {
   transform: translateY(-1px);
   box-shadow: 6px 6px 16px rgba(29,185,84,0.4);
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-lg);
+}
+
+.leftCol,
+.rightCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
 }
 
 .section {
@@ -180,6 +164,19 @@
   line-height: 1.7;
 }
 
+.lyrics {
+  margin: 0;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--color-text-sub);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -206,7 +203,20 @@
 }
 
 @media (min-width: 1024px) {
+  .withLyrics { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
   .similarGrid { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .cardTop {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .spotifyBtnTop {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-top: 2px;
+  }
 }
 
 .errorWrap {

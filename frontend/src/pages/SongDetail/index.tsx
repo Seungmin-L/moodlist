@@ -58,6 +58,10 @@ export default function SongDetail() {
     </div>
   )
 
+  const hasEmotions = !!(song.emotions && Object.keys(song.emotions).length > 0)
+  const hasNarrative = !!song.narrative
+  const hasLyrics = !!(song.lyrics && song.lyrics.trim())
+
   return (
     <div className={styles.page}>
       <div className={styles.topBar}>
@@ -76,63 +80,66 @@ export default function SongDetail() {
           <div className={styles.cardTop}>
             <AlbumArt artist={song.artist} category={song.category} imageUrl={song.album_art_url} shape="circle" size={96} />
             <div className={styles.info}>
-              <div className={styles.badges}>
-                {song.category && <CategoryBadge category={song.category} />}
-                {song.confidence != null && (
-                  <span className={styles.confidence}>{Math.round(song.confidence * 100)}%</span>
-                )}
-              </div>
               <h1 className={styles.title}>{song.title}</h1>
               <p className={styles.artist}>{song.artist}</p>
-              {song.emotional_arc && (
-                <p className={styles.arc}>{song.emotional_arc}</p>
+              {(song.category || song.confidence != null) && (
+                <div className={styles.metaLine}>
+                  {song.category && <CategoryBadge category={song.category} />}
+                  {song.confidence != null && (
+                    <span className={styles.confidence}>{Math.round(song.confidence * 100)}%</span>
+                  )}
+                </div>
               )}
             </div>
-          </div>
-
-          {song.mood && (
-            <div className={styles.moodBlock}>
-              <span className={styles.moodLabel}>mood</span>
-              <p className={styles.mood}>"{song.mood}"</p>
-            </div>
-          )}
-
-          <div className={styles.spotifyRow}>
             <a
               href={`https://open.spotify.com/track/${song.spotify_id}`}
-              target="_blank" rel="noopener noreferrer"
-              className={styles.spotifyBtn}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.spotifyBtnTop}
             >
               <ExternalLink size={15} /> Spotify에서 열기
             </a>
           </div>
-        </motion.div>
-      </FadeInSection>
 
-      {song.emotions && Object.keys(song.emotions).length > 0 && (
-        <FadeInSection delay={0.1}>
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>감정 분석</h2>
-            <EmotionsChart emotions={song.emotions} primaryEmotion={song.primary_emotion} />
-          </div>
-        </FadeInSection>
-      )}
+          {(hasEmotions || hasNarrative || hasLyrics) && (
+            <div className={`${styles.contentGrid} ${hasLyrics ? styles.withLyrics : ''}`}>
+              <div className={styles.leftCol}>
+                {hasEmotions && (
+                  <div className={styles.section}>
+                    <h2 className={styles.sectionTitle}>감정 분석</h2>
+                    <EmotionsChart emotions={song.emotions!} primaryEmotion={song.primary_emotion} />
+                  </div>
+                )}
 
-      {song.narrative && (
-        <FadeInSection delay={0.15}>
-          <div className={styles.section}>
-            <h2 className={styles.sectionTitle}>분석</h2>
-            <div className={styles.narrativeCard}>
-              <p className={styles.narrative}>{song.narrative}</p>
-              {song.tags && song.tags.length > 0 && (
-                <div className={styles.tags}>
-                  {song.tags.map((t) => <span key={t} className={styles.tag}>#{t}</span>)}
+                {hasNarrative && (
+                  <div className={styles.section}>
+                    <h2 className={styles.sectionTitle}>분석</h2>
+                    <div className={styles.narrativeCard}>
+                      <p className={styles.narrative}>{song.narrative}</p>
+                      {song.tags && song.tags.length > 0 && (
+                        <div className={styles.tags}>
+                          {song.tags.map((t) => <span key={t} className={styles.tag}>#{t}</span>)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {hasLyrics && (
+                <div className={styles.rightCol}>
+                  <div className={styles.section}>
+                    <h2 className={styles.sectionTitle}>가사 전문</h2>
+                    <div className={styles.narrativeCard}>
+                      <pre className={styles.lyrics}>{song.lyrics}</pre>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
-        </FadeInSection>
-      )}
+          )}
+        </motion.div>
+      </FadeInSection>
 
       {similar.length > 0 && (
         <FadeInSection delay={0.2}>

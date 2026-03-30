@@ -31,6 +31,7 @@ export default function SongCard({ song }: Props) {
       <AlbumArt
         artist={song.artist}
         category={song.category}
+        imageUrl={song.album_art_url}
         shape="rounded"
         size={72}
       />
