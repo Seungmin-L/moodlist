@@ -1,6 +1,9 @@
 import client from './client'
 import type { Song, SongDetail, SimilarSongsResponse } from '../types/song'
-import type { AddSongRequest, AddSongResponse } from '../types/api'
+import type { AddSongRequest, AddSongResponse, SearchSuggestion } from '../types/api'
+
+export const getSearchSuggestions = (q: string) =>
+  client.get<SearchSuggestion[]>('/search/suggestions', { params: { q } }).then((r) => r.data)
 
 export const addSong = (req: AddSongRequest) =>
   client.post<AddSongResponse>('/songs', req).then((r) => r.data)

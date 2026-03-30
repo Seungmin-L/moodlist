@@ -4,18 +4,7 @@
   gap: var(--space-md);
 }
 
-.inputs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-@media (min-width: 640px) {
-  .inputs { flex-direction: row; }
-}
-
 .inputWrap {
-  flex: 1;
   position: relative;
   display: flex;
   align-items: center;
@@ -23,36 +12,115 @@
 
 .inputIcon {
   position: absolute;
-  left: 14px;
+  left: 16px;
   color: var(--color-text-muted);
   pointer-events: none;
+  z-index: 1;
+}
+
+.spinnerRight {
+  position: absolute;
+  right: 14px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
 }
 
 .input {
   width: 100%;
   height: 52px;
-  padding: 0 var(--space-lg);
-  padding-left: 40px;
+  padding: 0 44px;
   background: var(--input-bg);
   box-shadow: var(--input-shadow);
   border-radius: var(--input-radius);
+  border: 1px solid transparent;
   font-size: 0.95rem;
   color: var(--color-text);
-  transition: box-shadow var(--transition);
-}
-
-.inputNoIcon {
-  padding-left: var(--space-lg);
+  transition: box-shadow var(--transition), border-color var(--transition);
 }
 
 .input::placeholder { color: var(--color-text-muted); }
 
 .input:focus {
-  box-shadow: var(--input-shadow), 0 0 0 2px rgba(139,92,246,0.25);
+  outline: none;
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: var(--input-shadow), 0 0 0 3px rgba(139,92,246,0.1);
 }
 
 .input:disabled { opacity: 0.6; }
 
+/* 드롭다운 */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+  z-index: 100;
+  overflow: hidden;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+.suggestionItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.suggestionItem:hover {
+  background: rgba(139,92,246,0.08);
+}
+
+.thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.thumbPlaceholder {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.2));
+  flex-shrink: 0;
+}
+
+.suggestionInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.suggestionTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestionArtist {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 분류 버튼 */
 .btn {
   display: flex;
   align-items: center;

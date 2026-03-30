@@ -13,6 +13,14 @@ export interface Stats {
 export interface AddSongRequest {
   title: string
   artist: string
+  spotify_id?: string
+}
+
+export interface SearchSuggestion {
+  spotify_id: string
+  title: string
+  artist: string
+  image_url: string | null
 }
 
 export interface AddSongResponse extends SongDetail {
