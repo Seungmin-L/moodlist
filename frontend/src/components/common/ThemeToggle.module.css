@@ -1,0 +1,26 @@
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--card-border);
+  color: var(--color-text-sub);
+  transition: all var(--transition);
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+
+.btn:hover {
+  color: var(--color-purple);
+  transform: scale(1.05);
+}
+
+.placeholder {
+  width: 44px;
+  height: 44px;
+}

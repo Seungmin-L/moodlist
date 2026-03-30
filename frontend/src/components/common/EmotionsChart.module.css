@@ -1,0 +1,51 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+  padding: 8px 14px;
+  box-shadow: 4px 4px 12px rgba(0,0,0,0.04), -2px -2px 8px rgba(255,255,255,0.8);
+  border: 1px solid var(--card-border);
+}
+
+.primary {
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 4px 4px 12px rgba(139,92,246,0.1), -2px -2px 8px rgba(255,255,255,0.8);
+}
+
+.name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 48px;
+  white-space: nowrap;
+}
+
+.barTrack {
+  flex: 1;
+  height: 6px;
+  background: rgba(0,0,0,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+.pct {
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: right;
+}
