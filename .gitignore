@@ -19,3 +19,5 @@ env/
 /pipeline/__pycache__
 .DS_Store
 /pipeline/__pycache__
+test_oracle.py
+/docs
