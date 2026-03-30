@@ -1,0 +1,219 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.backBtn, .reclassifyBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  touch-action: manipulation;
+  transition: all var(--transition);
+}
+
+.backBtn {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  color: var(--color-text-sub);
+}
+
+.backBtn:hover { color: var(--color-purple); }
+
+.reclassifyBtn {
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  color: var(--color-text-sub);
+}
+
+.reclassifyBtn:hover:not(:disabled) { color: var(--color-cyan); }
+.reclassifyBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.mainCard {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--card-border);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.cardTop {
+  display: flex;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.confidence {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.title {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--color-text);
+  line-height: 1.25;
+}
+
+.artist {
+  font-size: 0.9rem;
+  color: var(--color-text-sub);
+}
+
+.arc {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.moodBlock {
+  background: rgba(139,92,246,0.06);
+  border-left: 3px solid var(--color-purple);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.moodLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.mood {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-style: italic;
+}
+
+.spotifyRow { display: flex; }
+
+.spotifyBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 var(--space-lg);
+  background: #1DB954;
+  border-radius: var(--btn-radius);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 4px 4px 12px rgba(29,185,84,0.3);
+  transition: all var(--transition);
+  touch-action: manipulation;
+}
+
+.spotifyBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 6px 6px 16px rgba(29,185,84,0.4);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.narrativeCard {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--card-border);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.narrative {
+  font-size: 0.9rem;
+  color: var(--color-text-sub);
+  line-height: 1.7;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.tag {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-purple);
+  background: rgba(139,92,246,0.08);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+}
+
+.similarGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+}
+
+@media (min-width: 640px) {
+  .similarGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .similarGrid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.errorWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  color: var(--color-text-muted);
+}
