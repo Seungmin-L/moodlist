@@ -1,0 +1,100 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.pageTitle {
+  font-size: 1.6rem;
+  font-weight: 900;
+  background: var(--btn-primary-bg);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.tabsWrap {
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.tabsWrap::-webkit-scrollbar { display: none; }
+
+.tabs {
+  display: flex;
+  gap: var(--space-sm);
+  padding-bottom: 4px;
+  width: max-content;
+}
+
+.tab {
+  height: 44px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-sub);
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--card-border);
+  box-shadow: 3px 3px 8px rgba(0,0,0,0.05), -2px -2px 6px rgba(255,255,255,0.7);
+  transition: all var(--transition);
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--color-purple);
+  border-color: rgba(139,92,246,0.3);
+}
+
+.tab.active {
+  background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15));
+  color: var(--color-purple);
+  border-color: rgba(139,92,246,0.3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-sm);
+}
+
+@media (min-width: 640px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 1280px) {
+  .grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--space-xl);
+}
+
+.loadMore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 48px;
+  margin-top: var(--space-md);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-sub);
+  transition: all var(--transition);
+  touch-action: manipulation;
+}
+
+.loadMore:hover { color: var(--color-purple); }
