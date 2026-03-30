@@ -1,166 +1,298 @@
 """
 Silver → Gold LLM 분류 모듈
 
-Ollama (로컬 LLM)를 이용해 가사를 분류하고 Gold 레이어에 저장
-
-사용 전 준비:
-1. brew install ollama
-2. ollama serve (백그라운드 실행)
-3. ollama pull llama3.1:8b
+- OpenAI GPT-4o-mini 사용
+- category (고정 5개) + mood (자유 생성) + emotions 구조
 """
 
 import os
 import sys
 import json
-import requests
+import re
 from pathlib import Path
+from openai import OpenAI
+from dotenv import load_dotenv
 
-# 프로젝트 루트 경로 추가
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+load_dotenv(PROJECT_ROOT / ".env")
 
 from db.database import (
     get_silver_unclassified,
     insert_gold,
-    get_connection
+    get_connection,
+    get_all_mood_embeddings
 )
 
-
-# Ollama 설정
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "ministral-3:8b"  # 또는 llama3.1:70b
-
-# 분류 카테고리
-CATEGORIES = [
-    "이별",
-    "사랑",
-    "설렘",
-    "호감",
-    "썸",
-    "짝사랑",
-    "그리움",
-    "자기위로",
-    "힐링",
-    "희망",
-    "응원",
-    "우울/슬픔",
-    "분노",
-    "이별 후회",
-    "이별 슬픔",
-]
-
-CATEGORY_DESCRIPTIONS = """
-- 이별: 헤어짐, 관계의 끝, 이별 통보
-- 사랑: 사랑 고백, 행복한 연애, 사랑하는 감정
-- 설렘: 두근거림, 떨리는 마음, 연애 초기 감정
-- 호감: 관심, 끌림, 좋아하기 시작하는 감정
-- 썸: 연인 전 단계, 밀당, 애매한 관계
-- 짝사랑: 일방적 사랑, 혼자 좋아함, 고백 못함
-- 그리움: 누군가를 그리워함, 추억, 보고 싶음
-- 자기위로: 자기 자신을 위로, 스스로 다독임
-- 힐링: 치유, 평화로움, 마음의 안정
-- 희망: 희망적인 메시지, 미래에 대한 기대
-- 응원: 응원, 격려, 힘내라는 메시지
-- 우울/슬픔: 우울한 감정, 슬픔, 눈물
-- 분노: 화남, 배신감, 억울함
-- 이별 후회: 이별 후 후회, 돌아가고 싶음
-- 이별 슬픔: 이별 후 슬픔, 상실감, 허전함
-"""
+# OpenAI 설정
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+MODEL = "gpt-4o-mini"
+EMBEDDING_MODEL = "text-embedding-3-small"
 
 
-def check_ollama_running():
-    """Ollama 서버 실행 확인"""
-    try:
-        response = requests.get("http://localhost:11434/api/tags", timeout=5)
-        return response.status_code == 200
-    except:
-        return False
+def get_mood_embedding(mood: str) -> list:
+    """mood 텍스트의 임베딩 벡터 생성"""
+    if not mood:
+        return []
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=mood
+    )
+    return response.data[0].embedding
+
+
+def _cosine_similarity(a: list, b: list) -> float:
+    """두 벡터의 코사인 유사도"""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def find_similar_songs(gold_id: int, top_k: int = 10) -> list:
+    """특정 곡과 mood가 비슷한 곡 찾기"""
+    all_songs = get_all_mood_embeddings()
+
+    target = None
+    others = []
+    for song in all_songs:
+        emb = json.loads(song['mood_embedding']) if isinstance(song['mood_embedding'], str) else song['mood_embedding']
+        if song['id'] == gold_id:
+            target = emb
+        else:
+            others.append({**song, '_embedding': emb})
+
+    if not target:
+        return []
+
+    for song in others:
+        song['similarity'] = _cosine_similarity(target, song['_embedding'])
+
+    others.sort(key=lambda x: x['similarity'], reverse=True)
+    return [{k: v for k, v in s.items() if k != '_embedding'} for s in others[:top_k]]
+
+
+def group_songs_by_mood(threshold: float = 0.82) -> list:
+    """mood 유사도 기반으로 곡들을 그룹핑"""
+    all_songs = get_all_mood_embeddings()
+
+    songs = []
+    for song in all_songs:
+        emb = json.loads(song['mood_embedding']) if isinstance(song['mood_embedding'], str) else song['mood_embedding']
+        songs.append({**song, '_embedding': emb})
+
+    groups = []
+    used = set()
+
+    for i, song in enumerate(songs):
+        if i in used:
+            continue
+
+        group = [song]
+        used.add(i)
+
+        for j, other in enumerate(songs):
+            if j in used:
+                continue
+            sim = _cosine_similarity(song['_embedding'], other['_embedding'])
+            if sim >= threshold:
+                group.append(other)
+                used.add(j)
+
+        # 그룹 대표 mood는 첫 번째 곡의 mood
+        groups.append({
+            'mood': song['mood'],
+            'category': song['category'],
+            'songs': [{k: v for k, v in s.items() if k != '_embedding'} for s in group]
+        })
+
+    return groups
+
+SYSTEM_PROMPT = """당신은 한국 노래 가사의 상황과 감정을 분석하는 전문가입니다.
+
+## 분류 체계
+
+### category (대주제) - 반드시 아래 5개 중 하나
+- 사랑: 연애, 호감, 관계에 대한 노래
+- 이별: 헤어짐, 관계의 끝
+- 자기자신: 자존감, 성장, 다짐, 위로
+- 일상: 친구, 가족, 일상의 감정
+- 기타: 위에 해당 안 됨
+
+### mood (분위기/무드) - 자유롭게 생성
+이 곡을 어떤 기분일 때 들을지를 짧은 한국어 구문으로 표현.
+예: "후련한 이별", "슬픈 미련", "분노 폭발", "쿨하게 놓아줌", "달달한 설렘", "혼자만의 위로" 등
+정해진 목록 없이 곡의 분위기에 맞게 자유롭게 만들어라.
+
+### emotions (감정 점수)
+0.0~1.0 사이 점수, 0.3 이상만 포함.
+감정명도 자유롭게 사용 가능.
+
+## 분석 규칙
+1. 가사 전체 흐름을 읽어라 (시작 → 끝)
+2. 반전이 있으면 마지막 감정이 primary_emotion
+3. emotions 점수는 독립적 (합이 1.0 안 넘어도 됨)
+4. 0.3 이상인 감정만 emotions에 포함
+5. tags는 주제 키워드 2~4개
+6. 반드시 JSON만 출력하고, 다른 텍스트는 절대 포함하지 마"""
 
 
 def classify_lyrics(lyrics: str, title: str = "", artist: str = "") -> dict:
-    """
-    가사를 분류하고 카테고리 + 확신도 반환
-    Returns: {"category": ..., "confidence": ..., "reason": ...}
-    """
-    if not check_ollama_running():
-        print("⚠️  Ollama가 실행되지 않았습니다. 'ollama serve' 실행 필요")
-        return {"category": "기타", "confidence": 0.0, "reason": "Ollama 미실행"}
-    
-    prompt = f"""다음 노래 가사를 분석하고 가장 적절한 카테고리 하나를 선택해주세요.
+    """가사를 분석하고 감정 + 무드 반환"""
 
-## 카테고리
-{CATEGORY_DESCRIPTIONS}
+    user_prompt = f"""아래 곡을 분석하고 JSON만 출력하세요.
 
-## 곡 정보
 - 제목: {title}
 - 아티스트: {artist}
 
 ## 가사
-{lyrics[:2000]}
+{lyrics[:3000]}
 
-## 응답 형식
-반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만 출력하세요.
+## 응답 형식 (JSON만, 다른 텍스트 금지)
 {{
-    "category": "카테고리명",
-    "confidence": 0.0-1.0 사이 확신도,
-    "reason": "분류 이유 (한 줄)"
-}}
-"""
+  "category": "대주제 (사랑/이별/자기자신/일상/기타)",
+  "mood": "이 곡의 분위기를 짧은 구문으로 자유롭게 표현",
+  "emotions": {{"감정명": 점수}},
+  "primary_emotion": "가장 강한 감정",
+  "emotional_arc": "시작감정 → 끝감정",
+  "tags": ["키워드1", "키워드2"],
+  "narrative": "가사의 핵심 상황과 화자의 심정을 2~3문장으로",
+  "key_lyrics": "분류 근거가 된 핵심 가사 1~2줄 인용",
+  "reasoning": "이렇게 분류한 이유를 한 줄로",
+  "confidence": 0.0~1.0
+}}"""
 
     try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3,
-                    "num_predict": 200
-                }
-            },
-            timeout=60
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            max_tokens=800
         )
-        
-        response.raise_for_status()
-        content = response.json().get("response", "").strip()
-        
-        # JSON 추출 (혹시 ```json 으로 감싸져 있을 경우)
+
+        content = response.choices[0].message.content.strip()
+
+        # ```json``` 블록 추출
         if "```" in content:
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        
+            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
+            if match:
+                content = match.group(1).strip()
+
+        # { } 로 감싸진 JSON 찾기
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            content = json_match.group()
+
         result = json.loads(content)
-        
-        # 카테고리 검증
-        if result.get("category") not in CATEGORIES:
-            # 가장 유사한 카테고리 찾기
-            for cat in CATEGORIES:
-                if cat in result.get("category", ""):
-                    result["category"] = cat
-                    break
-            else:
-                result["category"] = "기타"
-        
+        result = _validate_result(result)
+
         return result
-        
+
     except json.JSONDecodeError as e:
+        repaired = _try_repair_json(content)
+        if repaired:
+            return _validate_result(repaired)
         print(f"JSON 파싱 실패: {e}")
-        print(f"응답 내용: {content}")
-        return {"category": "기타", "confidence": 0.0, "reason": "파싱 실패"}
+        print(f"응답 내용: {content[:200]}")
+        return _empty_result("파싱 실패")
     except Exception as e:
         print(f"분류 실패: {e}")
-        return {"category": "기타", "confidence": 0.0, "reason": str(e)}
+        return _empty_result(str(e))
+
+
+def _try_repair_json(content: str) -> dict | None:
+    """잘린 JSON 복구 시도"""
+    idx = content.find('{')
+    if idx == -1:
+        return None
+    content = content[idx:]
+
+    for suffix in ['"}', ']}', '}', '"]}', '"}]}']:
+        try:
+            return json.loads(content + suffix)
+        except json.JSONDecodeError:
+            continue
+
+    last_comma = content.rfind(',')
+    if last_comma > 0:
+        truncated = content[:last_comma] + '}'
+        try:
+            return json.loads(truncated)
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def _empty_result(reason: str) -> dict:
+    """빈 결과 반환"""
+    return {
+        "category": "기타",
+        "mood": "",
+        "emotions": {},
+        "primary_emotion": "미분류",
+        "emotional_arc": "",
+        "tags": [],
+        "narrative": reason,
+        "key_lyrics": "",
+        "reasoning": "",
+        "confidence": 0.0
+    }
+
+
+def _validate_result(result: dict) -> dict:
+    """결과 검증 및 정규화"""
+
+    defaults = {
+        "category": "기타",
+        "mood": "",
+        "emotions": {},
+        "primary_emotion": "미분류",
+        "emotional_arc": "",
+        "tags": [],
+        "narrative": "",
+        "key_lyrics": "",
+        "reasoning": "",
+        "confidence": 0.5
+    }
+
+    for key, default in defaults.items():
+        if key not in result:
+            result[key] = default
+
+    # category 검증
+    valid_categories = {"사랑", "이별", "자기자신", "일상", "기타"}
+    if result["category"] not in valid_categories:
+        result["category"] = "기타"
+
+    if not isinstance(result["emotions"], dict):
+        result["emotions"] = {}
+
+    for emotion, score in list(result["emotions"].items()):
+        if not isinstance(score, (int, float)):
+            result["emotions"][emotion] = 0.0
+        else:
+            result["emotions"][emotion] = max(0.0, min(1.0, float(score)))
+
+    if not result["primary_emotion"] and result["emotions"]:
+        result["primary_emotion"] = max(result["emotions"], key=result["emotions"].get)
+
+    if not isinstance(result["tags"], list):
+        result["tags"] = []
+
+    result["confidence"] = max(0.0, min(1.0, float(result.get("confidence", 0.5))))
+
+    return result
 
 
 def process_silver_to_gold(silver_id: int = None):
-    """
-    Silver 데이터를 분류해서 Gold에 저장
-    silver_id 지정하면 해당 곡만, 없으면 미처리 전체
-    """
+    """Silver 데이터를 분류해서 Gold에 저장"""
     if silver_id:
-        # 특정 곡만 처리
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -171,134 +303,73 @@ def process_silver_to_gold(silver_id: int = None):
         """, (silver_id,))
         row = cursor.fetchone()
         conn.close()
-        
+
         if not row:
             print(f"Silver ID {silver_id} 를 찾을 수 없음")
             return []
-        
+
         unclassified = [dict(row)]
     else:
-        # 미처리 전체
         unclassified = get_silver_unclassified()
-    
+
     if not unclassified:
         print("분류할 데이터가 없습니다.")
         return []
-    
+
     classified = []
-    
+
     for row in unclassified:
         sid = row['id']
         title = row['title']
         artist = row['artist']
         lyrics = row['clean_lyrics']
-        
+
         print(f"분류 중: {title} - {artist}")
-        
-        # LLM 분류
+
         result = classify_lyrics(lyrics, title, artist)
-        
+
         category = result.get("category", "기타")
+        mood = result.get("mood", "")
+        emotions = result.get("emotions", {})
+        primary_emotion = result.get("primary_emotion", "")
         confidence = result.get("confidence", 0.0)
-        reason = result.get("reason", "")
-        
-        # Gold에 저장
-        gold_id = insert_gold(sid, category, confidence)
-        
+        narrative = result.get("narrative", "")
+        key_lyrics = result.get("key_lyrics", "")
+        reasoning = result.get("reasoning", "")
+        tags = result.get("tags", [])
+        emotional_arc = result.get("emotional_arc", "")
+
+        # mood 임베딩 생성
+        mood_embedding = get_mood_embedding(mood)
+
+        gold_id = insert_gold(
+            sid, category, confidence,
+            mood=mood, mood_embedding=mood_embedding, emotions=emotions,
+            primary_emotion=primary_emotion, emotional_arc=emotional_arc,
+            tags=tags, narrative=narrative
+        )
+
         classified.append({
             "gold_id": gold_id,
             "silver_id": sid,
             "title": title,
             "artist": artist,
             "category": category,
+            "mood": mood,
+            "emotions": emotions,
+            "primary_emotion": primary_emotion,
             "confidence": confidence,
-            "reason": reason
+            "narrative": narrative,
+            "key_lyrics": key_lyrics,
+            "reasoning": reasoning,
+            "tags": tags,
+            "emotional_arc": emotional_arc,
         })
-        
-        print(f"  ✓ {category} (확신도: {confidence:.0%}) - {reason}")
-    
+
+        print(f"  ✓ [{category}] {mood} ({primary_emotion}, {confidence:.0%})")
+        print(f"    📝 {narrative}")
+        print(f"    🎵 \"{key_lyrics}\"")
+        print(f"    💡 {reasoning}")
+
     print(f"\n총 {len(classified)}곡 분류 완료")
     return classified
-
-
-def show_classification_results():
-    """분류 결과 요약 출력"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT g.category, COUNT(*) as count
-        FROM songs_gold g
-        GROUP BY g.category
-        ORDER BY count DESC
-    """)
-    
-    print("\n📊 분류 결과 요약")
-    print("-" * 30)
-    for row in cursor.fetchall():
-        print(f"  {row[0]}: {row[1]}곡")
-    
-    cursor.execute("""
-        SELECT g.category, b.title, b.artist, g.confidence
-        FROM songs_gold g
-        JOIN songs_silver s ON g.silver_id = s.id
-        JOIN songs_bronze b ON s.bronze_id = b.id
-        ORDER BY g.category, g.classified_at DESC
-    """)
-    
-    print("\n📋 전체 목록")
-    print("-" * 50)
-    current_category = None
-    for row in cursor.fetchall():
-        cat, title, artist, conf = row
-        if cat != current_category:
-            current_category = cat
-            print(f"\n[{cat}]")
-        print(f"  • {title} - {artist} ({conf:.0%})")
-    
-    conn.close()
-
-
-# ======================
-# CLI
-# ======================
-
-if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Silver → Gold 가사 분류")
-    parser.add_argument("--all", action="store_true", help="미분류 전체 처리")
-    parser.add_argument("--id", type=int, help="특정 Silver ID만 분류")
-    parser.add_argument("--results", action="store_true", help="분류 결과 보기")
-    parser.add_argument("--status", action="store_true", help="현재 상태 확인")
-    parser.add_argument("--categories", action="store_true", help="카테고리 목록 보기")
-    
-    args = parser.parse_args()
-    
-    if args.status:
-        from db.database import get_pipeline_stats
-        stats = get_pipeline_stats()
-        print("\n📊 파이프라인 현황")
-        print(f"  Bronze: {stats['bronze_count']}곡")
-        print(f"  Silver: {stats['silver_count']}곡")
-        print(f"  Gold: {stats['gold_count']}곡")
-        if stats['category_distribution']:
-            print(f"  카테고리: {stats['category_distribution']}")
-    
-    elif args.categories:
-        print("\n📂 사용 가능한 카테고리")
-        print(CATEGORY_DESCRIPTIONS)
-    
-    elif args.results:
-        show_classification_results()
-    
-    elif args.all or args.id:
-        process_silver_to_gold(args.id)
-    
-    else:
-        print("사용법:")
-        print("  python classify.py --all          # 미분류 전체 처리")
-        print("  python classify.py --id 1         # Silver ID 1만 분류")
-        print("  python classify.py --results      # 분류 결과 보기")
-        print("  python classify.py --status       # 파이프라인 현황")
-        print("  python classify.py --categories   # 카테고리 목록")
