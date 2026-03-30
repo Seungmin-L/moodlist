@@ -17,12 +17,17 @@ export default function Home() {
     getSongs().then((songs) => setRecentSongs(songs.slice(0, 12))).catch(() => {})
   }, [])
 
-  const handleSearch = async (title: string, artist: string, spotifyId?: string) => {
+  const handleSearch = async (title: string, artist: string, spotifyId?: string, imageUrl?: string) => {
     setIsSearching(true)
     setSearchError(null)
     setSearchResult(null)
     try {
-      const result = await addSong({ title, artist, ...(spotifyId ? { spotify_id: spotifyId } : {}) })
+      const result = await addSong({
+        title,
+        artist,
+        ...(spotifyId ? { spotify_id: spotifyId } : {}),
+        ...(imageUrl ? { image_url: imageUrl } : {}),
+      })
       setSearchResult(result)
       setRecentSongs((prev) => {
         const filtered = prev.filter((s) => s.spotify_id !== result.spotify_id)

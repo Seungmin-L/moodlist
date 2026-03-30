@@ -28,7 +28,7 @@ export default function SearchResult({ result }: Props) {
       )}
 
       <div className={styles.top}>
-        <AlbumArt artist={result.artist} category={result.category} size={80} />
+        <AlbumArt artist={result.artist} category={result.category} imageUrl={result.album_art_url} size={80} />
         <div className={styles.titleArea}>
           <div className={styles.badges}>
             {result.category && <CategoryBadge category={result.category} />}

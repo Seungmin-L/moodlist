@@ -74,7 +74,7 @@ export default function SongDetail() {
         <motion.div className={styles.mainCard}
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className={styles.cardTop}>
-            <AlbumArt artist={song.artist} category={song.category} shape="circle" size={96} />
+            <AlbumArt artist={song.artist} category={song.category} imageUrl={song.album_art_url} shape="circle" size={96} />
             <div className={styles.info}>
               <div className={styles.badges}>
                 {song.category && <CategoryBadge category={song.category} />}
@@ -140,7 +140,7 @@ export default function SongDetail() {
             <h2 className={styles.sectionTitle}>유사한 곡들</h2>
             <div className={styles.similarGrid}>
               {similar.map((s) => (
-                <SongCard key={s.spotify_id} song={{ ...s, status: 'classified', classified_at: null, emotions: null, primary_emotion: null, emotional_arc: null, tags: null, narrative: null, confidence: null }} />
+                <SongCard key={s.spotify_id} song={{ ...s, status: 'classified', classified_at: null, emotions: null, primary_emotion: null, emotional_arc: null, tags: null, narrative: null, confidence: null, album_art_url: s.album_art_url ?? null }} />
               ))}
             </div>
           </div>

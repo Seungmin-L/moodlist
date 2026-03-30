@@ -14,6 +14,7 @@ export interface AddSongRequest {
   title: string
   artist: string
   spotify_id?: string
+  image_url?: string
 }
 
 export interface SearchSuggestion {

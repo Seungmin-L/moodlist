@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Category } from '../../types'
 import styles from './AlbumArt.module.css'
 
@@ -17,28 +18,39 @@ const CAT_GRADIENTS: Record<string, string> = {
 interface Props {
   artist: string
   category?: Category | string | null
+  imageUrl?: string | null
   shape?: 'rounded' | 'circle'
   size?: number
 }
 
-export default function AlbumArt({ artist, category, shape = 'rounded', size = 80 }: Props) {
+export default function AlbumArt({ artist, category, imageUrl, shape = 'rounded', size = 80 }: Props) {
+  const [imgError, setImgError] = useState(false)
   const gradient = CAT_GRADIENTS[category ?? ''] ?? CAT_GRADIENTS['기타']
-  const initials = artist.slice(0, 6).toUpperCase()
+  const showImage = imageUrl && !imgError
 
   return (
     <div
       className={`${styles.art} ${styles[shape]}`}
       style={{
-        background: gradient,
         width: size,
         height: size,
         minWidth: size,
+        background: showImage ? 'transparent' : gradient,
       }}
       aria-hidden="true"
     >
-      <span className={styles.text} style={{ fontSize: Math.max(10, size * 0.2) }}>
-        {initials}
-      </span>
+      {showImage ? (
+        <img
+          src={imageUrl}
+          alt={artist}
+          className={styles.img}
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <span className={styles.text} style={{ fontSize: Math.max(10, size * 0.2) }}>
+          {artist.slice(0, 6).toUpperCase()}
+        </span>
+      )}
     </div>
   )
 }

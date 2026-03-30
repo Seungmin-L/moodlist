@@ -6,7 +6,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner'
 import styles from './SearchBar.module.css'
 
 interface Props {
-  onSearch: (title: string, artist: string, spotifyId?: string) => void
+  onSearch: (title: string, artist: string, spotifyId?: string, imageUrl?: string) => void
   isLoading: boolean
 }
 
@@ -54,7 +54,7 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
   const handleSelect = (s: SearchSuggestion) => {
     setQuery(`${s.title} - ${s.artist}`)
     setOpen(false)
-    onSearch(s.title, s.artist, s.spotify_id)
+    onSearch(s.title, s.artist, s.spotify_id, s.image_url ?? undefined)
   }
 
   const handleSubmit = (e: React.FormEvent) => {

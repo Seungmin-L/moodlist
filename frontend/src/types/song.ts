@@ -20,6 +20,7 @@ export interface Song {
   narrative: string | null
   confidence: number | null
   status: SongStatus
+  album_art_url: string | null
   classified_at: string | null
 }
 
@@ -36,6 +37,7 @@ export interface SimilarSong {
   artist: string
   mood: string | null
   category: Category | null
+  album_art_url: string | null
   similarity: number
 }
 
