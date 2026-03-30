@@ -1,0 +1,17 @@
+.root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: calc(var(--header-height) + var(--space-lg)) var(--space-md) var(--space-xl);
+}
+
+@media (min-width: 768px) {
+  .main { padding-left: var(--space-lg); padding-right: var(--space-lg); }
+}
