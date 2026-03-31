@@ -1,51 +1,47 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .pill {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  background: var(--card-bg);
-  backdrop-filter: blur(8px);
-  border-radius: 20px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
   padding: 8px 14px;
-  box-shadow: 4px 4px 12px rgba(0,0,0,0.04), -2px -2px 8px rgba(255,255,255,0.8);
-  border: 1px solid var(--card-border);
 }
 
-.primary {
-  border-color: rgba(139, 92, 246, 0.3);
-  box-shadow: 4px 4px 12px rgba(139,92,246,0.1), -2px -2px 8px rgba(255,255,255,0.8);
-}
+.primary { background: var(--accent-subtle); }
 
 .name {
   font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--color-text);
+  font-weight: 500;
+  color: var(--color-text-sub);
   min-width: 48px;
   white-space: nowrap;
 }
 
 .barTrack {
   flex: 1;
-  height: 6px;
-  background: rgba(0,0,0,0.06);
-  border-radius: 3px;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
   overflow: hidden;
 }
 
+[data-theme="dark"] .barTrack { background: rgba(255, 255, 255, 0.08); }
+
 .barFill {
   height: 100%;
-  border-radius: 3px;
-  opacity: 0.8;
+  border-radius: 2px;
 }
 
 .pct {
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
   min-width: 36px;
   text-align: right;
 }

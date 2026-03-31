@@ -2,25 +2,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-md);
-  background: var(--card-bg);
-  backdrop-filter: blur(16px);
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
-  color: var(--color-text-sub);
-  transition: all var(--transition);
+  color: var(--color-text-muted);
+  transition: color var(--transition), background var(--transition);
   touch-action: manipulation;
   flex-shrink: 0;
 }
 
 .btn:hover {
-  color: var(--color-purple);
-  transform: scale(1.05);
+  color: var(--color-text);
+  background: var(--bg-elevated);
 }
 
-.placeholder {
-  width: 44px;
-  height: 44px;
-}
+.placeholder { width: 36px; height: 36px; }

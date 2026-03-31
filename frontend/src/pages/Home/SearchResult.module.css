@@ -1,9 +1,6 @@
 .card {
   background: var(--card-bg);
-  backdrop-filter: blur(16px);
   border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
   padding: var(--space-lg);
   display: flex;
   flex-direction: column;
@@ -11,13 +8,16 @@
 }
 
 .existsBanner {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  color: var(--color-purple);
-  background: rgba(139,92,246,0.08);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
+  color: var(--color-text-muted);
+  background: var(--bg-elevated);
+  border-radius: 999px;
+  padding: 4px 12px;
   text-align: center;
+  width: fit-content;
+  margin: 0 auto;
+  letter-spacing: 0.02em;
 }
 
 .top {
@@ -41,36 +41,36 @@
 }
 
 .confidence {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 500;
   color: var(--color-text-muted);
 }
 
 .title {
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: 1.2rem;
+  font-weight: 700;
   color: var(--color-text);
-  line-height: 1.3;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
 }
 
 .artist {
   font-size: 0.85rem;
-  color: var(--color-text-sub);
+  color: var(--color-text-muted);
 }
 
 .moodBlock {
-  background: rgba(139,92,246,0.06);
-  border-left: 3px solid var(--color-purple);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-subtle);
+  border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
 }
 
 .moodLabel {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  color: var(--color-purple);
+  color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
   display: block;
   margin-bottom: 2px;
 }
@@ -82,16 +82,12 @@
   font-style: italic;
 }
 
-.narrative {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.narrative { display: flex; flex-direction: column; gap: 6px; }
 
 .narrativeClamp {
   font-size: 0.85rem;
   color: var(--color-text-sub);
-  line-height: 1.6;
+  line-height: 1.65;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -101,29 +97,31 @@
 .narrativeFull {
   font-size: 0.85rem;
   color: var(--color-text-sub);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .expandBtn {
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--color-purple);
+  color: var(--accent);
   align-self: flex-start;
   touch-action: manipulation;
 }
 
+.expandBtn:hover { opacity: 0.7; }
+
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .tag {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-purple);
-  background: rgba(139,92,246,0.08);
-  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: var(--bg-elevated);
+  border-radius: 999px;
   padding: 3px 10px;
 }
 
@@ -138,42 +136,35 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 44px;
+  height: 40px;
   padding: 0 var(--space-lg);
-  background: #1DB954;
-  border-radius: var(--btn-radius);
+  background: var(--color-spotify);
+  border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 700;
   color: #fff;
-  box-shadow: 4px 4px 12px rgba(29,185,84,0.3);
-  transition: all var(--transition);
+  transition: opacity var(--transition);
   touch-action: manipulation;
 }
 
-.spotifyBtn:hover {
-  transform: translateY(-1px);
-  box-shadow: 6px 6px 16px rgba(29,185,84,0.4);
-}
+.spotifyBtn:hover { opacity: 0.85; }
 
 .similarBtn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 44px;
+  gap: 6px;
+  height: 40px;
   padding: 0 var(--space-lg);
-  background: var(--card-bg);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--card-border);
-  border-radius: var(--btn-radius);
-  box-shadow: var(--card-shadow);
+  background: var(--bg-elevated);
+  border-radius: 999px;
   font-size: 0.875rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text-sub);
-  transition: all var(--transition);
+  transition: background var(--transition), color var(--transition);
   touch-action: manipulation;
 }
 
 .similarBtn:hover {
-  color: var(--color-purple);
-  border-color: rgba(139,92,246,0.3);
+  background: var(--bg-hover);
+  color: var(--color-text);
 }

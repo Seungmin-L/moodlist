@@ -4,35 +4,34 @@
   gap: var(--space-md);
   padding: var(--space-md);
   background: var(--card-bg);
-  backdrop-filter: blur(16px);
   border-radius: var(--card-radius);
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
   cursor: pointer;
-  position: relative;
-  overflow: hidden;
+  transition: background var(--transition);
 }
+
+.card:hover { background: var(--bg-hover); }
 
 .info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .title {
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: 0.875rem;
+  font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
 }
 
 .artist {
   font-size: 0.78rem;
-  color: var(--color-text-sub);
+  color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -47,7 +46,7 @@
 
 .confidence {
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-muted);
 }
 
@@ -59,12 +58,15 @@
   height: 32px;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
-  transition: all var(--transition);
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
   touch-action: manipulation;
   flex-shrink: 0;
 }
 
+.card:hover .spotifyBtn { opacity: 1; }
+
 .spotifyBtn:hover {
-  color: #1DB954;
+  color: var(--color-spotify);
   background: rgba(29, 185, 84, 0.1);
 }
