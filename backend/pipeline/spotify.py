@@ -27,11 +27,14 @@ except ImportError:
 
 # OAuth 스코프 (필요한 권한들)
 SCOPES = [
-    "playlist-read-private",      # 비공개 플레이리스트 읽기
-    "playlist-read-collaborative", # 협업 플레이리스트 읽기
-    "playlist-modify-public",      # 공개 플레이리스트 생성/수정
-    "playlist-modify-private",     # 비공개 플레이리스트 생성/수정
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "playlist-modify-public",
+    "playlist-modify-private",
 ]
+
+# Spotify Developer Console 에도 동일 URI 등록 필요
+REDIRECT_URI = "http://127.0.0.1:8000/spotify/callback"
 
 
 def get_spotify_client_simple():
@@ -53,58 +56,44 @@ def get_spotify_client_simple():
 
 
 def get_spotify_client_oauth(cache_path: str = None):
-    """
-    Spotify API 클라이언트 생성 (OAuth 로그인, 전체 기능)
-    처음 실행 시 브라우저에서 로그인 필요
-    """
+    """Spotify OAuth 클라이언트 (비공개 플레이리스트 접근 가능)"""
+    return spotipy.Spotify(auth_manager=_make_auth_manager(cache_path))
+
+
+def _make_auth_manager(cache_path: str = None, open_browser: bool = False):
+    """SpotifyOAuth 인스턴스 생성 (내부 헬퍼)"""
     client_id = os.getenv("SPOTIFY_CLIENT_ID")
     client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-    redirect_uri = "http://127.0.0.1:8888/callback"
-    
-    if not client_id or not client_secret:
-        raise ValueError(
-            "Spotify API 키가 필요합니다.\n"
-            ".env 파일에 SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET 추가"
-        )
-    
     if cache_path is None:
         cache_path = str(REPO_ROOT / ".spotify_cache")
-    
-    auth_manager = SpotifyOAuth(
+    return SpotifyOAuth(
         client_id=client_id,
         client_secret=client_secret,
-        redirect_uri=redirect_uri,
+        redirect_uri=REDIRECT_URI,
         scope=" ".join(SCOPES),
         cache_path=cache_path,
-        open_browser=True
+        open_browser=open_browser,
     )
-    
-    return spotipy.Spotify(auth_manager=auth_manager)
+
+
+def get_auth_url() -> str:
+    """OAuth 로그인 URL 반환 (브라우저를 열지 않음)"""
+    return _make_auth_manager().get_authorize_url()
+
+
+def exchange_code(code: str) -> dict:
+    """인가 코드를 액세스 토큰으로 교환하고 캐시에 저장"""
+    return _make_auth_manager().get_access_token(code, as_dict=True)
 
 
 def is_logged_in(cache_path: str = None) -> bool:
-    """OAuth 로그인 상태 확인"""
+    """OAuth 로그인(캐시) 상태 확인"""
     if cache_path is None:
         cache_path = str(REPO_ROOT / ".spotify_cache")
-    
     try:
         if not os.path.exists(cache_path):
             return False
-        
-        client_id = os.getenv("SPOTIFY_CLIENT_ID")
-        client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-        redirect_uri = "http://127.0.0.1:8888/callback"
-        
-        auth_manager = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
-            scope=" ".join(SCOPES),
-            cache_path=cache_path,
-            open_browser=False
-        )
-        
-        token_info = auth_manager.get_cached_token()
+        token_info = _make_auth_manager(cache_path).get_cached_token()
         return token_info is not None
     except:
         return False

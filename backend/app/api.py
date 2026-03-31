@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -188,17 +189,36 @@ async def playlist_groups(
 # Spotify
 # ======================
 
+@app.get("/spotify/preview", summary="Spotify 플레이리스트 트랙 목록 미리보기 (분류 없음)")
+async def spotify_preview(playlist_url: str = Query(...)):
+    """
+    플레이리스트 URL로 트랙 목록만 가져옴. 분류하지 않음.
+    프론트에서 곡 선택 후 개별 /songs 호출로 분류.
+    """
+    from pipeline.spotify import get_playlist_tracks, get_playlist_info, is_logged_in
+
+    use_oauth = is_logged_in()
+    try:
+        info = get_playlist_info(playlist_url, use_oauth=use_oauth)
+        tracks = get_playlist_tracks(playlist_url, use_oauth=use_oauth)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"플레이리스트 조회 실패: {e}")
+
+    return {"playlist": info, "tracks": tracks}
+
+
 @app.post("/spotify/import", summary="Spotify 플레이리스트 → 곡 일괄 추가+분류")
 async def spotify_import(req: SpotifyImportRequest):
     """
     Spotify 플레이리스트 URL로 트랙 가져와서 일괄 분류.
     이미 DB에 있는 곡은 스킵.
     """
-    from pipeline.spotify import get_playlist_tracks, get_playlist_info
+    from pipeline.spotify import get_playlist_tracks, get_playlist_info, is_logged_in
 
+    use_oauth = is_logged_in()
     try:
-        info = get_playlist_info(req.playlist_url)
-        tracks = get_playlist_tracks(req.playlist_url)
+        info = get_playlist_info(req.playlist_url, use_oauth=use_oauth)
+        tracks = get_playlist_tracks(req.playlist_url, use_oauth=use_oauth)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"플레이리스트 조회 실패: {e}")
 
@@ -296,13 +316,57 @@ async def search_suggestions(q: str = Query(..., min_length=1)):
 
 @app.get("/spotify/auth", summary="Spotify 로그인 상태 확인")
 async def spotify_auth():
-    from pipeline.spotify import get_spotify_client_oauth
+    from pipeline.spotify import is_logged_in, get_spotify_client_oauth
+    if not is_logged_in():
+        return {"logged_in": False}
     try:
         sp = get_spotify_client_oauth()
         user = sp.current_user()
         return {"logged_in": True, "user": user.get("display_name")}
     except Exception as e:
         return {"logged_in": False, "error": str(e)}
+
+
+@app.get("/spotify/login", summary="Spotify OAuth 로그인 URL 반환")
+async def spotify_login():
+    """프론트에서 받은 URL을 새 창으로 열어 로그인"""
+    from pipeline.spotify import get_auth_url
+    return {"auth_url": get_auth_url()}
+
+
+@app.get("/spotify/callback", summary="Spotify OAuth 콜백 처리")
+async def spotify_callback(code: str = Query(None), error: str = Query(None)):
+    if error:
+        return HTMLResponse(
+            f"<html><body><p>로그인 실패: {error}</p><script>window.close()</script></body></html>"
+        )
+    if not code:
+        return HTMLResponse("<html><body><p>잘못된 요청</p></body></html>")
+    from pipeline.spotify import exchange_code
+    try:
+        exchange_code(code)
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;display:flex;align-items:center;"
+            "justify-content:center;height:100vh;margin:0'>"
+            "<div style='text-align:center'>"
+            "<p style='font-size:1.2rem'>✅ Spotify 로그인 완료!</p>"
+            "<p style='color:#888'>이 창을 닫아도 됩니다.</p>"
+            "<script>setTimeout(()=>window.close(),1500)</script>"
+            "</div></body></html>"
+        )
+    except Exception as e:
+        return HTMLResponse(f"<html><body><p>오류: {e}</p></body></html>")
+
+
+@app.get("/spotify/me/playlists", summary="내 Spotify 플레이리스트 목록")
+async def my_playlists():
+    from pipeline.spotify import is_logged_in, get_my_playlists
+    if not is_logged_in():
+        raise HTTPException(status_code=401, detail="Spotify 로그인이 필요합니다")
+    try:
+        return get_my_playlists()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ======================

@@ -45,3 +45,19 @@ export interface SpotifyExportResult {
   playlist_url: string
   added: number
 }
+
+export interface SpotifyPreviewTrack {
+  id: string
+  uri: string
+  title: string
+  artist: string
+  album: string
+}
+
+export interface SpotifyMyPlaylist {
+  id: string
+  name: string
+  total: number
+  public: boolean
+  image: string | null
+}
