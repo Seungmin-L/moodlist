@@ -14,23 +14,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 var(--space-md);
-  border-radius: var(--radius-md);
-  font-size: 0.825rem;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-xl);
+  font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  touch-action: manipulation;
-  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  color: var(--text-secondary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-default);
+  transition: all var(--transition);
+  box-shadow: var(--card-shadow);
 }
 
 .backBtn:hover,
 .reclassifyBtn:hover:not(:disabled) {
-  color: var(--color-text);
-  border-color: var(--color-border-hover);
-  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-secondary);
 }
 
 .reclassifyBtn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -40,8 +40,8 @@
 
 .mainCard {
   background: var(--card-bg);
-  border-radius: var(--card-radius);
   border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
   padding: var(--space-lg);
   display: flex;
@@ -70,53 +70,51 @@
 }
 
 .confidence {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 .title {
-  font-size: 1.3rem;
+  font-size: 22px;
   font-weight: 700;
-  color: var(--color-text);
-  line-height: 1.25;
-  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .artist {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
 .spotifyBtnTop {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 var(--space-md);
+  height: 32px;
+  padding: 0 14px;
   background: var(--color-spotify);
-  border-radius: var(--btn-radius);
-  font-size: 0.8rem;
-  font-weight: 700;
+  border-radius: var(--radius-xl);
+  font-size: 12px;
+  font-weight: 600;
   color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
-  opacity: 0.9;
-  transition: opacity var(--transition);
+  transition: background var(--transition);
+  box-shadow: var(--spotify-shadow);
 }
-
-.spotifyBtnTop:hover { opacity: 1; }
+.spotifyBtnTop:hover { background: var(--spotify-hover); }
 
 .moodBlock {
-  background: var(--accent-subtle);
-  border-left: 2px solid var(--accent);
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--accent);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  padding: var(--space-sm) var(--space-md);
+  padding: 10px 14px;
 }
 
 .moodLabel {
-  font-size: 0.68rem;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -125,9 +123,9 @@
 }
 
 .mood {
-  font-size: 0.9rem;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--text-primary);
   font-style: italic;
 }
 
@@ -158,15 +156,16 @@
 }
 
 .sectionTitle {
-  font-size: 0.72rem;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--color-text-muted);
-  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .narrativeCard {
-  background: var(--bg-elevated);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--space-md);
   display: flex;
@@ -175,15 +174,15 @@
 }
 
 .narrative {
-  font-size: 0.875rem;
-  color: var(--color-text-sub);
-  line-height: 1.7;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.75;
 }
 
 .lyrics {
-  font-size: 0.825rem;
-  color: var(--color-text-sub);
-  line-height: 1.8;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.85;
   white-space: pre-wrap;
   font-family: inherit;
   margin: 0;
@@ -198,34 +197,28 @@
 }
 
 .tag {
-  font-size: 0.75rem;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--color-text-muted);
-  background: var(--bg-elevated);
-  border-radius: 999px;
-  padding: 3px 10px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-xl);
+  padding: 4px 11px;
 }
 
 .similarGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 2px;
-  background: var(--bg-elevated);
+  gap: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
 }
 
-.similarGrid > * {
-  border-radius: 0;
-}
-
-@media (min-width: 640px) {
-  .similarGrid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (min-width: 1024px) {
-  .similarGrid { grid-template-columns: repeat(4, 1fr); }
-}
+@media (min-width: 640px) { .similarGrid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .similarGrid { grid-template-columns: repeat(3, 1fr); } }
 
 .errorWrap {
   display: flex;
@@ -233,6 +226,18 @@
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-xl);
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
+
+.errorWrap button {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: var(--radius-xl);
+  background: var(--btn-primary-bg);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--btn-primary-shadow);
+}
+.errorWrap button:hover { background: var(--btn-primary-hover); }
