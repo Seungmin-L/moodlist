@@ -5,6 +5,8 @@ export interface PlaylistGroupSong {
   mood: string | null
   category: string | null
   similarity: number
+  album_art_url: string | null
+  narrative: string | null
 }
 
 export interface PlaylistGroup {

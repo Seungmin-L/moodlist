@@ -1,107 +1,115 @@
 /* ============================================================
-   Moodlist Design System — untitled.stream 모티브
-   라이트 미니멀 + 핑크 배경 glow
+   Moodlist — Apple Music / iPod Theme
    ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  /* ── 베이스 서피스 ── */
-  --bg-base:      #ffffff;
-  --bg-surface:   #f2f2f2;
-  --bg-elevated:  #ebebeb;
-  --bg-hover:     #e8e8e8;
+  /* ── Surfaces ── */
+  --bg-primary:   #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary:  #e8e8ed;
+  --bg-hover:     #dcdce0;
+  --bg-active:    #d2d2d7;
 
-  /* ── 텍스트 ── */
-  --color-text:       #191919;
-  --color-text-sub:   #4a4a4a;
-  --color-text-muted: #8a8a8a;
+  /* Legacy aliases */
+  --bg-base:      var(--bg-primary);
+  --bg-surface:   var(--bg-secondary);
+  --bg-elevated:  var(--bg-tertiary);
 
-  /* ── 보더 ── */
-  --color-border:       rgba(0, 0, 0, 0.07);
-  --color-border-hover: rgba(0, 0, 0, 0.14);
+  /* ── Text ── */
+  --text-primary:   #1c1c1e;
+  --text-secondary: #8e8e93;
+  --text-tertiary:  #aeaeb2;
 
-  /* ── 액센트 (핑크) ── */
-  --accent:        #ff6b9d;
-  --accent-hover:  #ff4d8a;
-  --accent-subtle: rgba(255, 107, 157, 0.1);
+  /* Legacy aliases */
+  --color-text:       var(--text-primary);
+  --color-text-sub:   var(--text-secondary);
+  --color-text-muted: var(--text-tertiary);
 
-  /* ── Spotify 전용 ── */
+  /* ── Borders ── */
+  --border-default: rgba(0, 0, 0, 0.06);
+  --border-hover:   rgba(0, 0, 0, 0.12);
+
+  /* Legacy aliases */
+  --color-border:       var(--border-default);
+  --color-border-hover: var(--border-hover);
+
+  /* ── Accent: Apple Music Red (use sparingly) ── */
+  --accent:        #fa2d48;
+  --accent-hover:  #e0253e;
+  --accent-subtle: rgba(250, 45, 72, 0.07);
+
+  /* ── Spotify Brand (Spotify 전용 버튼에만 사용) ── */
   --color-spotify: #1DB954;
+  --spotify-hover: #17a349;
+  --spotify-shadow: 0 2px 8px rgba(29, 185, 84, 0.25);
 
-  /* ── 카테고리 컬러 ── */
-  --cat-관심:    #f97316;
-  --cat-짝사랑:  #ff6b9d;
-  --cat-썸:      #a78bfa;
-  --cat-사랑:    #ef4444;
-  --cat-권태기:  #9ca3af;
-  --cat-갈등:    #f87171;
-  --cat-이별:    #60a5fa;
-  --cat-자기자신:#34d399;
-  --cat-일상:    #fbbf24;
-  --cat-기타:    #9ca3af;
+  /* ── Primary CTA (Dark) ── */
+  --btn-primary-bg:     #1c1c1e;
+  --btn-primary-hover:  #2c2c2e;
+  --btn-primary-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 
-  /* ── 카드 ── */
-  --card-bg:           #f2f2f2;
-  --card-border:       transparent;
-  --card-radius:       14px;
-  --card-shadow:       none;
-  --card-shadow-hover: none;
+  /* ── Category Colors (muted for light bg) ── */
+  --cat-관심:    #3b82f6;
+  --cat-짝사랑:  #ec4899;
+  --cat-썸:      #8b5cf6;
+  --cat-사랑:    #ff3b30;
+  --cat-권태기:  #8e8e93;
+  --cat-갈등:    #ff6b6b;
+  --cat-이별:    #5856d6;
+  --cat-자기자신:#34c759;
+  --cat-일상:    #ff9500;
+  --cat-기타:    #aeaeb2;
 
-  /* ── 인풋 ── */
-  --input-bg:     #f2f2f2;
-  --input-border: rgba(0, 0, 0, 0.1);
-  --input-radius: 12px;
+  /* Mood accent aliases */
+  --accent-이별:    #5856d6;
+  --accent-사랑:    #ff3b30;
+  --accent-갈등:    #ff6b6b;
+  --accent-자기자신:#34c759;
+  --accent-일상:    #ff9500;
+  --accent-관심:    #3b82f6;
+  --accent-짝사랑:  #ec4899;
+  --accent-썸:      #8b5cf6;
+  --accent-권태기:  #8e8e93;
+  --accent-기타:    #aeaeb2;
 
-  /* ── 버튼 ── */
-  --btn-primary-bg:     #191919;
-  --btn-primary-shadow: none;
-  --btn-radius:         999px;
+  /* ── Cards ── */
+  --card-bg:           #ffffff;
+  --card-border:       rgba(0, 0, 0, 0.06);
+  --card-radius:       12px;
+  --card-shadow:       0 2px 8px rgba(0, 0, 0, 0.06);
+  --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.10);
 
-  /* ── 스페이싱 ── */
+  /* ── Inputs ── */
+  --input-bg:     var(--bg-tertiary);
+  --input-border: rgba(0, 0, 0, 0.08);
+  --input-radius: 10px;
+
+  /* ── Buttons ── */
+  --btn-radius: 999px;
+
+  /* ── Spacing ── */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 40px;
 
-  /* ── 레디어스 ── */
+  /* ── Radius ── */
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 999px;
 
-  /* ── 트랜지션 ── */
-  --transition: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  /* ── Transitions ── */
+  --transition: 200ms ease;
 
-  /* ── 레이아웃 ── */
+  /* ── Layout ── */
   --header-height: 56px;
-  --max-width: 1080px;
+  --max-width: 960px;
 }
 
-/* ── 다크 모드 ── */
-[data-theme="dark"] {
-  --bg-base:      #191919;
-  --bg-surface:   #202020;
-  --bg-elevated:  #282828;
-  --bg-hover:     #2e2e2e;
-
-  --color-text:       #ffffff;
-  --color-text-sub:   #b6b6b6;
-  --color-text-muted: #7e7e7e;
-
-  --color-border:       rgba(255, 255, 255, 0.1);
-  --color-border-hover: rgba(255, 255, 255, 0.18);
-
-  --card-bg:    #202020;
-  --card-border: transparent;
-  --input-bg:   #282828;
-  --input-border: rgba(255, 255, 255, 0.1);
-
-  --btn-primary-bg: #ffffff;
-}
-
-/* ── 전역 리셋 ── */
 html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
@@ -110,37 +118,15 @@ html {
 
 body {
   margin: 0;
-  background-color: var(--bg-base);
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 15px;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   letter-spacing: -0.01em;
-  transition: background-color var(--transition), color var(--transition);
 }
 
-/* ── 배경 핑크 glow ── */
-body::before {
-  content: '';
-  position: fixed;
-  top: -20%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 800px;
-  height: 600px;
-  background: radial-gradient(ellipse at center, rgba(255, 107, 157, 0.18) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-[data-theme="dark"] body::before {
-  background: radial-gradient(ellipse at center, rgba(255, 107, 157, 0.08) 0%, transparent 70%);
-}
-
-#root {
-  position: relative;
-  z-index: 1;
-}
+#root { position: relative; }
 
 a   { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
@@ -160,10 +146,14 @@ input, textarea {
   border: none;
   outline: none;
   background: none;
-  color: var(--color-text);
+  color: var(--text-primary);
 }
 
 ::-webkit-scrollbar               { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track         { background: transparent; }
-::-webkit-scrollbar-thumb         { background: var(--color-border); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover   { background: var(--color-text-muted); }
+::-webkit-scrollbar-thumb         { background: rgba(0,0,0,0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover   { background: rgba(0,0,0,0.25); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
