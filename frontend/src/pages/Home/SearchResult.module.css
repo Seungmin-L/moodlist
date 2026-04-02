@@ -1,29 +1,29 @@
 .card {
   background: var(--card-bg);
+  border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
   padding: var(--space-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  width: 100%;
 }
 
 .existsBanner {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--bg-elevated);
-  border-radius: 999px;
-  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
   text-align: center;
-  width: fit-content;
-  margin: 0 auto;
-  letter-spacing: 0.02em;
 }
 
 .top {
   display: flex;
   gap: var(--space-md);
-  align-items: flex-start;
+  align-items: center;
 }
 
 .titleArea {
@@ -37,79 +37,93 @@
 .badges {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .confidence {
-  font-size: 0.72rem;
+  font-size: 11px;
   font-weight: 500;
-  color: var(--color-text-muted);
+  color: var(--text-tertiary);
 }
 
 .title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--color-text);
-  line-height: 1.25;
-  letter-spacing: -0.025em;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .artist {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
+/* ── Mood Block ──────────────────────────────────────────── */
 .moodBlock {
-  background: var(--accent-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
+  border-left: 3px solid var(--text-tertiary);
+  padding-left: var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: 10px var(--space-md);
 }
 
 .moodLabel {
-  font-size: 0.65rem;
-  font-weight: 700;
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  display: block;
-  margin-bottom: 2px;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
 }
 
 .mood {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--color-text);
-  font-style: italic;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0;
 }
 
-.narrative { display: flex; flex-direction: column; gap: 6px; }
+/* ── Narrative ───────────────────────────────────────────── */
+.narrative {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 .narrativeClamp {
-  font-size: 0.85rem;
-  color: var(--color-text-sub);
-  line-height: 1.65;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .narrativeFull {
-  font-size: 0.85rem;
-  color: var(--color-text-sub);
-  line-height: 1.65;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0;
 }
 
 .expandBtn {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--accent);
   align-self: flex-start;
-  touch-action: manipulation;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  transition: opacity var(--transition);
 }
-
 .expandBtn:hover { opacity: 0.7; }
 
+/* ── Tags ────────────────────────────────────────────────── */
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -117,54 +131,53 @@
 }
 
 .tag {
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--color-text-muted);
-  background: var(--bg-elevated);
-  border-radius: 999px;
-  padding: 3px 10px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-xl);
+  padding: 4px 11px;
 }
 
+/* ── Actions ─────────────────────────────────────────────── */
 .actions {
   display: flex;
+  align-items: center;
   gap: var(--space-sm);
   flex-wrap: wrap;
-  margin-top: var(--space-xs);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-default);
 }
 
 .spotifyBtn {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 40px;
-  padding: 0 var(--space-lg);
+  height: 36px;
+  padding: 0 16px;
   background: var(--color-spotify);
-  border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 700;
+  border-radius: var(--radius-xl);
+  font-size: 13px;
+  font-weight: 600;
   color: #fff;
-  transition: opacity var(--transition);
-  touch-action: manipulation;
+  transition: background var(--transition);
+  box-shadow: var(--spotify-shadow);
 }
-
-.spotifyBtn:hover { opacity: 0.85; }
+.spotifyBtn:hover { background: var(--spotify-hover); }
 
 .similarBtn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 var(--space-lg);
-  background: var(--bg-elevated);
-  border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text-sub);
-  transition: background var(--transition), color var(--transition);
-  touch-action: manipulation;
+  gap: 4px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-xl);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--card-bg);
+  border: 1px solid var(--border-hover);
+  transition: all var(--transition);
 }
-
-.similarBtn:hover {
-  background: var(--bg-hover);
-  color: var(--color-text);
-}
+.similarBtn:hover { background: var(--bg-secondary); }

@@ -17,9 +17,14 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const skipSuggestRef = useRef(false)
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (skipSuggestRef.current) {
+      skipSuggestRef.current = false
+      return
+    }
     if (!query.trim() || query.trim().length < 2) {
       setSuggestions([])
       setOpen(false)
@@ -52,20 +57,15 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
   }, [])
 
   const handleSelect = (s: SearchSuggestion) => {
+    skipSuggestRef.current = true
     setQuery(`${s.title} - ${s.artist}`)
+    setSuggestions([])
     setOpen(false)
     onSearch(s.title, s.artist, s.spotify_id, s.image_url ?? undefined)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!query.trim() || isLoading) return
-    setOpen(false)
-    // 직접 입력 시 title/artist 분리 시도
-    const parts = query.split(' - ')
-    const title = parts[0].trim()
-    const artist = parts[1]?.trim() ?? ''
-    onSearch(title, artist)
   }
 
   return (
@@ -101,10 +101,6 @@ export default function SearchBar({ onSearch, isLoading }: Props) {
           </ul>
         )}
       </div>
-
-      <button className={styles.btn} type="submit" disabled={isLoading || !query.trim()}>
-        {isLoading ? <LoadingSpinner size="sm" /> : '분류하기'}
-      </button>
 
       {isLoading && (
         <p className={styles.hint}>가사를 분석 중입니다... 최대 1분 소요될 수 있어요</p>

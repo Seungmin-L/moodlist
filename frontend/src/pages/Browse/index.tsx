@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getSongs } from '../../api/songs'
 import type { Song, Category } from '../../types'
-import SongCard from '../../components/common/SongCard'
+import AlbumArt from '../../components/common/AlbumArt'
+import CategoryBadge from '../../components/common/CategoryBadge'
 import LoadingSpinner from '../../components/common/LoadingSpinner'
-import FadeInSection from '../../components/common/FadeInSection'
 import styles from './Browse.module.css'
 
 const CATEGORIES: Array<Category | 'all'> = [
@@ -13,78 +13,121 @@ const CATEGORIES: Array<Category | 'all'> = [
 ]
 const LABELS: Record<string, string> = { all: '전체' }
 
-const PAGE_SIZE = 12
-
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeCategory = (searchParams.get('category') as Category) || null
   const [songs, setSongs] = useState<Song[]>([])
-  const [visible, setVisible] = useState(PAGE_SIZE)
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     setLoading(true)
-    setVisible(PAGE_SIZE)
     getSongs(activeCategory ?? undefined)
-      .then(setSongs)
+      .then((data) => setSongs(data))
       .catch(() => setSongs([]))
       .finally(() => setLoading(false))
   }, [activeCategory])
 
+  const filtered = useMemo(() => {
+    if (!query.trim()) return songs
+    const q = query.toLowerCase()
+    return songs.filter((s) =>
+      s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q)
+    )
+  }, [songs, query])
+
   const handleCategory = (cat: Category | 'all') => {
+    setQuery('')
     if (cat === 'all') setSearchParams({})
     else setSearchParams({ category: cat })
   }
 
   return (
-    <div className={styles.page}>
-      <FadeInSection>
-        <h1 className={styles.pageTitle}>Browse</h1>
-      </FadeInSection>
+    <div className={styles.layout}>
+      {/* Header */}
+      <div className={styles.libraryHeader}>
+        <h1 className={styles.libraryTitle}>라이브러리</h1>
+      </div>
 
-      <FadeInSection delay={0.05}>
-        <div className={styles.tabsWrap}>
-          <div className={styles.tabs}>
-            {CATEGORIES.map((cat) => (
+      {/* Search */}
+      <div className={styles.searchWrap}>
+        <svg className={styles.searchIcon} viewBox="0 0 16 16" fill="none" aria-hidden>
+          <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <input
+          className={styles.searchInput}
+          placeholder="검색"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {/* Category Pills */}
+      <div className={styles.pillsWrap}>
+        <div className={styles.pills}>
+          {CATEGORIES.map((cat) => {
+            const isActive = cat === 'all' ? !activeCategory : activeCategory === cat
+            return (
               <button
                 key={cat}
-                className={`${styles.tab} ${(cat === 'all' ? !activeCategory : activeCategory === cat) ? styles.active : ''}`}
+                className={`${styles.pill} ${isActive ? styles.pillActive : ''}`}
                 onClick={() => handleCategory(cat)}
               >
                 {LABELS[cat] ?? cat}
               </button>
-            ))}
-          </div>
+            )
+          })}
         </div>
-      </FadeInSection>
+      </div>
 
+      {/* Song List */}
       {loading ? (
         <LoadingSpinner size="md" />
+      ) : filtered.length === 0 ? (
+        <p className={styles.empty}>곡이 없습니다</p>
       ) : (
         <AnimatePresence mode="wait">
           <motion.div
             key={activeCategory ?? 'all'}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
+            className={styles.songList}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.2 }}
           >
-            {songs.length === 0 ? (
-              <p className={styles.empty}>분류된 곡이 없습니다</p>
-            ) : (
-              <>
-                <div className={styles.grid}>
-                  {songs.slice(0, visible).map((song) => (
-                    <SongCard key={song.spotify_id} song={song} />
-                  ))}
+            {filtered.map((song) => (
+              <a
+                key={song.spotify_id}
+                className={styles.songRow}
+                href={`/song/${song.spotify_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <AlbumArt
+                  artist={song.artist}
+                  category={song.category}
+                  imageUrl={song.album_art_url}
+                  shape="rounded"
+                  size={44}
+                />
+                <div className={styles.songInfo}>
+                  <span className={styles.songTitle}>{song.title}</span>
+                  <span className={styles.songMeta}>
+                    {song.artist}
+                    {song.category && <> · <CategoryBadge category={song.category} size="sm" /></>}
+                    {song.confidence != null && (
+                      <span className={styles.songConf}> · {Math.round(song.confidence * 100)}%</span>
+                    )}
+                  </span>
                 </div>
-                {visible < songs.length && (
-                  <button className={styles.loadMore} onClick={() => setVisible((v) => v + PAGE_SIZE)}>
-                    더 보기 ({songs.length - visible}곡 남음)
-                  </button>
+                {song.classified_at && (
+                  <span className={styles.songDuration}>
+                    {new Date(song.classified_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                  </span>
                 )}
-              </>
-            )}
+              </a>
+            ))}
           </motion.div>
         </AnimatePresence>
       )}

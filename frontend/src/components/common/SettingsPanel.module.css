@@ -1,0 +1,121 @@
+.wrap {
+  position: relative;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: color var(--transition), background var(--transition);
+}
+
+.btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 224px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  z-index: 300;
+}
+
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.loading {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+.connectedRow, .disconnectedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.connectedInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.checkIcon { color: var(--color-spotify); flex-shrink: 0; }
+
+.username {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notConnected {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.disconnectBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-xl);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.disconnectBtn:hover:not(:disabled) {
+  color: #DC2626;
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.disconnectBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.loginBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: var(--radius-xl);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-spotify);
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+
+.loginBtn:hover { background: var(--spotify-hover); }
