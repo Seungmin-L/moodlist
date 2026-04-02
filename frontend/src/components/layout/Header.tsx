@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Music2, Menu, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import ThemeToggle from '../common/ThemeToggle'
+import { getSpotifyAuth } from '../../api/spotify'
+import SettingsPanel from '../common/SettingsPanel'
 import styles from './Header.module.css'
 
 const NAV_LINKS = [
@@ -12,13 +13,25 @@ const NAV_LINKS = [
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [spotifyConnected, setSpotifyConnected] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    getSpotifyAuth().then((s) => setSpotifyConnected(s.logged_in)).catch(() => {})
+  }, [])
 
   return (
     <>
-      <header className={styles.header}>
+      <header className={`${styles.header} ${scrolled ? styles.scrolled : ''}`}>
         <div className={styles.inner}>
           <NavLink to="/" className={styles.logo}>
-            <Music2 size={22} />
+            <Music2 size={18} />
             <span>Moodlist</span>
           </NavLink>
 
@@ -27,9 +40,7 @@ export default function Header() {
               <NavLink
                 key={to}
                 to={to}
-                className={({ isActive }) =>
-                  `${styles.navLink} ${isActive ? styles.active : ''}`
-                }
+                className={({ isActive }) => `${styles.navLink} ${isActive ? styles.active : ''}`}
               >
                 {label}
               </NavLink>
@@ -37,13 +48,10 @@ export default function Header() {
           </nav>
 
           <div className={styles.actions}>
-            <ThemeToggle />
-            <button
-              className={styles.hamburger}
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-label="메뉴 열기"
-            >
-              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            {spotifyConnected && <span className={styles.spotifyDot} title="Spotify 연결됨" />}
+            <SettingsPanel />
+            <button className={styles.hamburger} onClick={() => setMenuOpen((v) => !v)} aria-label="메뉴 열기">
+              {menuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
         </div>
@@ -52,27 +60,15 @@ export default function Header() {
       <AnimatePresence>
         {menuOpen && (
           <>
-            <motion.div
-              className={styles.backdrop}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setMenuOpen(false)}
-            />
+            <motion.div className={styles.backdrop} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMenuOpen(false)} />
             <motion.nav
               className={styles.mobileMenu}
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
             >
               {NAV_LINKS.map(({ to, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  className={({ isActive }) =>
-                    `${styles.mobileLink} ${isActive ? styles.active : ''}`
-                  }
+                <NavLink key={to} to={to}
+                  className={({ isActive }) => `${styles.mobileLink} ${isActive ? styles.active : ''}`}
                   onClick={() => setMenuOpen(false)}
                 >
                   {label}

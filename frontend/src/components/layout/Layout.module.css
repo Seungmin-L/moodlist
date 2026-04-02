@@ -2,6 +2,7 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: var(--bg-secondary);
 }
 
 .main {
@@ -13,5 +14,5 @@
 }
 
 @media (min-width: 768px) {
-  .main { padding-left: var(--space-lg); padding-right: var(--space-lg); }
+  .main { padding-left: 32px; padding-right: 32px; }
 }

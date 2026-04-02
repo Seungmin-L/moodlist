@@ -1,72 +1,60 @@
-.card {
-  display: flex;
+.row {
+  display: grid;
+  grid-template-columns: 24px 40px 1fr 56px;
   align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-md);
-  background: var(--card-bg);
-  border-radius: var(--card-radius);
+  gap: 10px;
+  padding: 10px var(--space-md);
+  border-bottom: 1px solid var(--border-default);
   cursor: pointer;
-  transition: background var(--transition);
+  transition: background var(--transition), box-shadow var(--transition);
 }
 
-.card:hover { background: var(--bg-hover); }
+.rowNoIndex {
+  grid-template-columns: 40px 1fr 56px;
+}
+
+/* last-child border removed: container overflow:hidden handles the edge */
+.row:hover { background: var(--bg-secondary); }
+.row:hover .waveWrap { opacity: 0.8; }
+
+.index {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+  font-weight: 400;
+}
 
 .info {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  align-items: flex-start;
 }
 
 .title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.01em;
 }
 
 .artist {
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.meta {
+.waveWrap {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  margin-top: 2px;
-}
-
-.confidence {
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
-}
-
-.spotifyBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  opacity: 0;
-  transition: opacity var(--transition), color var(--transition), background var(--transition);
-  touch-action: manipulation;
+  justify-content: flex-end;
+  opacity: 0.35;
+  transition: opacity var(--transition);
   flex-shrink: 0;
-}
-
-.card:hover .spotifyBtn { opacity: 1; }
-
-.spotifyBtn:hover {
-  color: var(--color-spotify);
-  background: rgba(29, 185, 84, 0.1);
 }
