@@ -17,26 +17,46 @@ PROJECT_ROOT = Path(__file__).parent.parent
 REPO_ROOT = PROJECT_ROOT.parent
 load_dotenv(REPO_ROOT / ".env")
 
+# ======================
+# 커넥션 풀
+# ======================
+
+_pool: oracledb.ConnectionPool | None = None
+
+def _get_pool() -> oracledb.ConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = oracledb.create_pool(
+            user=os.getenv("ORACLE_USER"),
+            password=os.getenv("ORACLE_PASSWORD"),
+            dsn=os.getenv("ORACLE_DSN"),
+            min=2,
+            max=10,
+            increment=1,
+            tcp_connect_timeout=15,
+        )
+    return _pool
+
+
+def _clob_output_type_handler(cursor, metadata):
+    """CLOB 컬럼을 LOB descriptor 대신 일반 문자열로 즉시 반환.
+    이를 설정하지 않으면 각 CLOB마다 .read() 네트워크 왕복이 발생해 쿼리가 수십 배 느려진다."""
+    if metadata.type_code is oracledb.DB_TYPE_CLOB:
+        return cursor.var(oracledb.DB_TYPE_LONG, arraysize=cursor.arraysize)
+
 
 def get_connection():
-    """Oracle DB 연결 반환"""
-    return oracledb.connect(
-        user=os.getenv("ORACLE_USER"),
-        password=os.getenv("ORACLE_PASSWORD"),
-        dsn=os.getenv("ORACLE_DSN"),
-        tcp_connect_timeout=15
-    )
+    """커넥션 풀에서 커넥션 반환. CLOB 자동 문자열 변환 핸들러 적용."""
+    conn = _get_pool().acquire()
+    conn.outputtypehandler = _clob_output_type_handler
+    return conn
 
 
 def _row_to_dict(cursor, row):
-    """커서 컬럼명 기반으로 row를 dict로 변환 (connection 닫히기 전에 호출해야 함)"""
+    """커서 컬럼명 기반으로 row를 dict로 변환.
+    outputtypehandler 덕분에 CLOB은 이미 str이므로 .read() 불필요."""
     columns = [col[0].lower() for col in cursor.description]
-    result = {}
-    for col, val in zip(columns, row):
-        if hasattr(val, 'read'):
-            val = val.read()
-        result[col] = val
-    return result
+    return dict(zip(columns, row))
 
 
 def init_db():
@@ -44,7 +64,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 테이블이 이미 존재하면 스킵
     try:
         cursor.execute("""
             CREATE TABLE songs (
@@ -72,7 +91,6 @@ def init_db():
         conn.commit()
         print("songs 테이블 생성 완료")
 
-        # 벡터 인덱스 생성
         try:
             cursor.execute("""
                 CREATE VECTOR INDEX idx_mood_embedding
@@ -85,13 +103,12 @@ def init_db():
             pass
 
     except oracledb.DatabaseError:
-        # 테이블 이미 존재 — album_art_url 컬럼 없으면 추가
         try:
             cursor.execute("ALTER TABLE songs ADD (album_art_url VARCHAR2(1000))")
             conn.commit()
             print("album_art_url 컬럼 추가 완료")
         except oracledb.DatabaseError:
-            pass  # 이미 있으면 스킵
+            pass
 
     conn.close()
 
@@ -101,11 +118,6 @@ def init_db():
 # ======================
 
 def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, source_url: str = None, album_art_url: str = None) -> dict:
-    """
-    곡 추가.
-    이미 있으면 기존 레코드 반환 (already_exists=True).
-    없으면 신규 INSERT (status='pending').
-    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -117,7 +129,6 @@ def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, so
         return {"spotify_id": spotify_id, "already_exists": False, "status": "pending"}
 
     except oracledb.IntegrityError:
-        # 기존 곡이면 album_art_url이 비어 있을 때만 보강 업데이트
         if album_art_url:
             cursor.execute("""
                 UPDATE songs
@@ -147,7 +158,6 @@ def insert_song(spotify_id: str, title: str, artist: str, lyrics: str = None, so
 
 
 def update_lyrics(spotify_id: str, lyrics: str):
-    """가사 업데이트"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE songs SET lyrics = :1 WHERE spotify_id = :2", [lyrics, spotify_id])
@@ -156,11 +166,6 @@ def update_lyrics(spotify_id: str, lyrics: str):
 
 
 def update_classification(spotify_id: str, result: dict = None, error: str = None):
-    """
-    분류 결과 저장.
-    result가 있으면 status='classified',
-    error가 있으면 status='error'.
-    """
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -207,7 +212,6 @@ def update_classification(spotify_id: str, result: dict = None, error: str = Non
 
 
 def get_pending_songs() -> list:
-    """분류 대기 중인 곡 (status='pending' 또는 'error') 조회"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -223,7 +227,6 @@ def get_pending_songs() -> list:
 
 
 def get_song(spotify_id: str) -> dict | None:
-    """단일 곡 조회"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -246,7 +249,6 @@ def get_song(spotify_id: str) -> dict | None:
 
 
 def get_songs_by_category(category: str = None) -> list:
-    """카테고리별 곡 조회"""
     conn = get_connection()
     cursor = conn.cursor()
     if category:
@@ -281,7 +283,6 @@ def get_songs_by_category(category: str = None) -> list:
 
 
 def get_all_categories() -> list:
-    """분류된 카테고리 목록"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -298,7 +299,6 @@ def get_all_categories() -> list:
 # ======================
 
 def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
-    """Oracle VECTOR_DISTANCE로 유사곡 검색"""
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -329,55 +329,100 @@ def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
 
 def group_songs_by_mood(top_k_per_group: int = 20) -> list:
     """
-    mood 기준 대표 곡들을 뽑고, 각 대표 곡과 유사한 곡들로 그룹 구성.
+    mood 기준 자동 그룹핑.
+    한 번의 쿼리로 전체 임베딩을 읽어온 뒤 Python에서 그룹핑하여
+    N+1 쿼리 문제를 제거.
     """
     conn = get_connection()
     cursor = conn.cursor()
 
+    # 전체 분류된 곡 + 임베딩 + narrative 한 번에 가져오기
     cursor.execute("""
-        SELECT spotify_id, title, artist, mood, category, album_art_url
+        SELECT spotify_id, title, artist, mood, category, album_art_url,
+               narrative, mood_embedding
         FROM songs
         WHERE status = 'classified' AND mood_embedding IS NOT NULL
         ORDER BY classified_at
     """)
-    all_songs = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
+    all_rows = cursor.fetchall()
+    conn.close()
 
-    if not all_songs:
-        conn.close()
+    if not all_rows:
         return []
 
-    groups = []
-    grouped_ids = set()
+    # 컬럼 인덱스 매핑
+    col_names = ["spotify_id", "title", "artist", "mood", "category",
+                 "album_art_url", "narrative", "mood_embedding"]
 
-    for song in all_songs:
-        if song["spotify_id"] in grouped_ids:
+    songs = []
+    for row in all_rows:
+        d = {}
+        for i, col in enumerate(col_names):
+            val = row[i]
+            if hasattr(val, 'read'):
+                val = val.read()
+            d[col] = val
+        songs.append(d)
+
+    # Python에서 코사인 유사도 계산 (Oracle 왕복 없이)
+    import math
+
+    def cosine_dist(a, b) -> float:
+        if not a or not b:
+            return 1.0
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(x * x for x in b))
+        if na == 0 or nb == 0:
+            return 1.0
+        return 1.0 - dot / (na * nb)
+
+    # mood_embedding을 list[float]로 변환
+    for s in songs:
+        emb = s["mood_embedding"]
+        if emb is not None:
+            try:
+                s["_vec"] = list(emb)
+            except Exception:
+                s["_vec"] = []
+        else:
+            s["_vec"] = []
+
+    grouped_ids: set = set()
+    groups = []
+
+    for seed in songs:
+        if seed["spotify_id"] in grouped_ids:
             continue
 
-        cursor.execute("""
-            SELECT spotify_id, title, artist, mood, category, album_art_url,
-                   VECTOR_DISTANCE(mood_embedding,
-                       (SELECT mood_embedding FROM songs WHERE spotify_id = :1),
-                       COSINE) AS similarity
-            FROM songs
-            WHERE status = 'classified'
-              AND mood_embedding IS NOT NULL
-            ORDER BY similarity
-            FETCH FIRST :2 ROWS ONLY
-        """, [song["spotify_id"], top_k_per_group])
+        seed_vec = seed["_vec"]
+        if not seed_vec:
+            continue
 
-        group_songs = [_row_to_dict(cursor, row) for row in cursor.fetchall()]
-        similar = [s for s in group_songs if s.get("similarity", 1) <= 0.2]
+        # seed와 유사한 곡들 계산
+        scored = []
+        for s in songs:
+            dist = cosine_dist(seed_vec, s["_vec"])
+            scored.append((dist, s))
 
-        for s in similar:
+        scored.sort(key=lambda x: x[0])
+        group_songs = [s for dist, s in scored if dist <= 0.45][:top_k_per_group]
+
+        for s in group_songs:
             grouped_ids.add(s["spotify_id"])
 
+        # 반환 형태에서 내부 필드 제거
+        clean_songs = [
+            {k: v for k, v in s.items() if k != "_vec" and k != "mood_embedding"}
+            for s in group_songs
+        ]
+
         groups.append({
-            "mood": song["mood"],
-            "category": song["category"],
-            "songs": similar
+            "mood": seed["mood"],
+            "category": seed["category"],
+            "songs": clean_songs,
         })
 
-    conn.close()
     return groups
 
 
@@ -386,7 +431,6 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
 # ======================
 
 def get_stats() -> dict:
-    """전체 통계"""
     conn = get_connection()
     cursor = conn.cursor()
 

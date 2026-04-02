@@ -506,9 +506,9 @@ def search_song_with_diagnostics(
     token: str = None,
     limit: int = 10,
     debug: bool = None,
-    per_page: int = 50,
-    max_pages: int = 20,
-    verify_top_k: int = 3,
+    per_page: int = 30,
+    max_pages: int = 6,
+    verify_top_k: int = 2,
 ):
     """
     Artist-first 곡 검색.
@@ -682,9 +682,9 @@ def search_song(
     token: str = None,
     limit: int = 10,
     debug: bool = None,
-    per_page: int = 50,
-    max_pages: int = 20,
-    verify_top_k: int = 3,
+    per_page: int = 30,
+    max_pages: int = 6,
+    verify_top_k: int = 2,
 ):
     results, diagnostics = search_song_with_diagnostics(
         title=title,

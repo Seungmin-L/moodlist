@@ -293,7 +293,7 @@ def search_track(title: str, artist: str = "") -> dict:
     artists = ", ".join([a["name"] for a in track.get("artists", [])])
 
     images = track.get("album", {}).get("images", [])
-    image_url = images[-1]["url"] if images else None  # 가장 작은 썸네일
+    image_url = images[0]["url"] if images else None  # 고화질 (640px)
 
     return {
         "id": track["id"],

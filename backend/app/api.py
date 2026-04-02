@@ -2,6 +2,7 @@
 Moodlist FastAPI 백엔드
 """
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Optional
@@ -34,7 +35,7 @@ from pipeline.classify import add_and_classify, classify_pending_songs
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from db.database import init_db
-    init_db()
+    await asyncio.to_thread(init_db)
     yield
 
 app = FastAPI(
@@ -71,6 +72,13 @@ class SpotifyExportRequest(BaseModel):
     description: str = ""
     public: bool = True
 
+class SpotifyExportTracksRequest(BaseModel):
+    spotify_ids: list[str]
+    playlist_name: str
+    playlist_id: Optional[str] = None  # None이면 새로 생성, 있으면 기존에 추가
+    description: str = ""
+    public: bool = True
+
 
 # ======================
 # 곡 관리
@@ -78,22 +86,17 @@ class SpotifyExportRequest(BaseModel):
 
 @app.post("/songs", summary="곡 추가 + 분류")
 async def add_song(req: AddSongRequest):
-    """
-    곡 추가 후 분류.
-    1. Spotify에서 곡 검색 → spotify_id + 영어 제목/아티스트 확보
-    2. 이미 분류된 곡이면 기존 결과 즉시 반환
-    3. 신규 곡은 Genius에서 가사 크롤링 후 GPT 분류
-    """
     try:
         from pipeline.classify import add_and_classify_by_id
         if req.spotify_id:
-            result = add_and_classify_by_id(req.spotify_id, req.title, req.artist, image_url=req.image_url)
+            result = await asyncio.to_thread(
+                add_and_classify_by_id, req.spotify_id, req.title, req.artist, image_url=req.image_url
+            )
         else:
-            result = add_and_classify(req.title, req.artist)
+            result = await asyncio.to_thread(add_and_classify, req.title, req.artist)
 
-        # 최종 저장 상태를 DB에서 다시 읽어 내려준다 (album_art_url 포함 보장)
         spotify_id = result.get("spotify_id")
-        song = get_song(spotify_id) if spotify_id else None
+        song = await asyncio.to_thread(get_song, spotify_id) if spotify_id else None
         if song:
             return {
                 "already_exists": result.get("already_exists", False),
@@ -108,19 +111,74 @@ async def add_song(req: AddSongRequest):
 
 @app.get("/songs", summary="곡 목록 조회")
 async def list_songs(
-    category: Optional[str] = Query(None, description="카테고리 필터 (관심/짝사랑/썸/사랑/권태기/갈등/이별/자기자신/일상/기타)"),
+    category: Optional[str] = Query(None),
 ):
-    return get_songs_by_category(category)
+    return await asyncio.to_thread(get_songs_by_category, category)
 
 
 @app.get("/songs/pending", summary="분류 대기 중인 곡 목록")
 async def list_pending():
-    return get_pending_songs()
+    return await asyncio.to_thread(get_pending_songs)
+
+
+@app.post("/songs/backfill-art", summary="앨범아트 없는 곡들 Spotify에서 일괄 패치")
+async def backfill_album_art():
+    """album_art_url이 없는 곡들을 Spotify track API로 일괄 업데이트"""
+    def _backfill():
+        from pipeline.spotify import get_spotify_client_simple
+        from db.database import get_connection
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT spotify_id, title, artist FROM songs
+            WHERE album_art_url IS NULL OR TRIM(album_art_url) = ''
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return {"updated": 0, "skipped": 0}
+
+        sp = get_spotify_client_simple()
+        updated = 0
+        skipped = 0
+        ids = [row[0] for row in rows]
+
+        # Spotify는 한 번에 최대 50개 track 조회 가능
+        for i in range(0, len(ids), 50):
+            batch = ids[i:i+50]
+            try:
+                tracks = sp.tracks(batch).get("tracks", [])
+                conn2 = get_connection()
+                cur2 = conn2.cursor()
+                for track in tracks:
+                    if not track:
+                        skipped += 1
+                        continue
+                    images = track.get("album", {}).get("images", [])
+                    image_url = images[0]["url"] if images else None  # 고화질
+                    if image_url:
+                        cur2.execute(
+                            "UPDATE songs SET album_art_url = :1 WHERE spotify_id = :2",
+                            [image_url, track["id"]]
+                        )
+                        updated += 1
+                    else:
+                        skipped += 1
+                conn2.commit()
+                conn2.close()
+            except Exception as e:
+                skipped += len(batch)
+
+        return {"updated": updated, "skipped": skipped}
+
+    return await asyncio.to_thread(_backfill)
 
 
 @app.get("/songs/{spotify_id}", summary="곡 상세 조회")
 async def get_song_detail(spotify_id: str):
-    song = get_song(spotify_id)
+    song = await asyncio.to_thread(get_song, spotify_id)
     if not song:
         raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
     return song
@@ -129,16 +187,15 @@ async def get_song_detail(spotify_id: str):
 @app.get("/songs/{spotify_id}/similar", summary="유사곡 검색")
 async def similar_songs(
     spotify_id: str,
-    top_k: int = Query(10, ge=1, le=50, description="반환할 유사곡 수")
+    top_k: int = Query(10, ge=1, le=50)
 ):
-    """mood 임베딩 벡터 유사도 기반 유사곡 검색"""
-    song = get_song(spotify_id)
+    song = await asyncio.to_thread(get_song, spotify_id)
     if not song:
         raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
     if song.get("status") != "classified":
         raise HTTPException(status_code=400, detail="아직 분류되지 않은 곡입니다")
 
-    similar = find_similar_songs(spotify_id, top_k=top_k)
+    similar = await asyncio.to_thread(find_similar_songs, spotify_id, top_k)
     return {
         "base_song": {
             "spotify_id": song["spotify_id"],
@@ -152,21 +209,23 @@ async def similar_songs(
 
 @app.post("/songs/{spotify_id}/reclassify", summary="재분류")
 async def reclassify_song(spotify_id: str):
-    """분류 결과 재분류"""
-    song = get_song(spotify_id)
+    song = await asyncio.to_thread(get_song, spotify_id)
     if not song:
         raise HTTPException(status_code=404, detail=f"Song {spotify_id} 없음")
 
-    from db.database import get_connection
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE songs SET status = 'pending' WHERE spotify_id = :1", [spotify_id])
-    conn.commit()
-    conn.close()
+    def _reset_status():
+        from db.database import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE songs SET status = 'pending' WHERE spotify_id = :1", [spotify_id])
+        conn.commit()
+        conn.close()
+
+    await asyncio.to_thread(_reset_status)
 
     from pipeline.classify import classify_song
     try:
-        result = classify_song(spotify_id)
+        result = await asyncio.to_thread(classify_song, spotify_id)
         return {"spotify_id": spotify_id, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -178,10 +237,9 @@ async def reclassify_song(spotify_id: str):
 
 @app.get("/playlist/groups", summary="mood 유사도 기반 자동 그룹핑")
 async def playlist_groups(
-    top_k: int = Query(20, ge=5, le=100, description="그룹당 최대 곡 수")
+    top_k: int = Query(20, ge=5, le=100)
 ):
-    """전체 분류된 곡을 mood 유사도로 자동 그룹핑"""
-    groups = group_songs_by_mood(top_k_per_group=top_k)
+    groups = await asyncio.to_thread(group_songs_by_mood, top_k)
     return {"groups": groups}
 
 
@@ -189,18 +247,14 @@ async def playlist_groups(
 # Spotify
 # ======================
 
-@app.get("/spotify/preview", summary="Spotify 플레이리스트 트랙 목록 미리보기 (분류 없음)")
+@app.get("/spotify/preview", summary="Spotify 플레이리스트 트랙 목록 미리보기")
 async def spotify_preview(playlist_url: str = Query(...)):
-    """
-    플레이리스트 URL로 트랙 목록만 가져옴. 분류하지 않음.
-    프론트에서 곡 선택 후 개별 /songs 호출로 분류.
-    """
     from pipeline.spotify import get_playlist_tracks, get_playlist_info, is_logged_in
 
-    use_oauth = is_logged_in()
+    use_oauth = await asyncio.to_thread(is_logged_in)
     try:
-        info = get_playlist_info(playlist_url, use_oauth=use_oauth)
-        tracks = get_playlist_tracks(playlist_url, use_oauth=use_oauth)
+        info = await asyncio.to_thread(get_playlist_info, playlist_url, use_oauth)
+        tracks = await asyncio.to_thread(get_playlist_tracks, playlist_url, use_oauth)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"플레이리스트 조회 실패: {e}")
 
@@ -209,23 +263,19 @@ async def spotify_preview(playlist_url: str = Query(...)):
 
 @app.post("/spotify/import", summary="Spotify 플레이리스트 → 곡 일괄 추가+분류")
 async def spotify_import(req: SpotifyImportRequest):
-    """
-    Spotify 플레이리스트 URL로 트랙 가져와서 일괄 분류.
-    이미 DB에 있는 곡은 스킵.
-    """
     from pipeline.spotify import get_playlist_tracks, get_playlist_info, is_logged_in
 
-    use_oauth = is_logged_in()
+    use_oauth = await asyncio.to_thread(is_logged_in)
     try:
-        info = get_playlist_info(req.playlist_url, use_oauth=use_oauth)
-        tracks = get_playlist_tracks(req.playlist_url, use_oauth=use_oauth)
+        info = await asyncio.to_thread(get_playlist_info, req.playlist_url, use_oauth)
+        tracks = await asyncio.to_thread(get_playlist_tracks, req.playlist_url, use_oauth)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"플레이리스트 조회 실패: {e}")
 
     results = []
     for track in tracks:
         try:
-            result = add_and_classify(track["title"], track["artist"])
+            result = await asyncio.to_thread(add_and_classify, track["title"], track["artist"])
             results.append({
                 "title": track["title"],
                 "artist": track["artist"],
@@ -256,13 +306,9 @@ async def spotify_import(req: SpotifyImportRequest):
 
 @app.post("/spotify/export", summary="mood 그룹 → Spotify 플레이리스트 생성")
 async def spotify_export(req: SpotifyExportRequest):
-    """
-    특정 mood 곡들을 Spotify 플레이리스트로 생성.
-    spotify_id를 직접 사용하므로 검색 단계 스킵.
-    """
     from pipeline.spotify import create_playlist, add_tracks_to_playlist
 
-    groups = group_songs_by_mood()
+    groups = await asyncio.to_thread(group_songs_by_mood)
     target_songs = []
     for group in groups:
         if group["mood"] == req.mood:
@@ -273,19 +319,16 @@ async def spotify_export(req: SpotifyExportRequest):
         raise HTTPException(status_code=404, detail=f"mood '{req.mood}' 곡 없음")
 
     try:
-        playlist = create_playlist(
-            name=req.playlist_name,
-            description=req.description or f"Moodlist - {req.mood}",
-            public=req.public
+        playlist = await asyncio.to_thread(
+            create_playlist, req.playlist_name,
+            req.description or f"Moodlist - {req.mood}", req.public
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"플레이리스트 생성 실패: {e}")
 
-    # spotify_id로 바로 URI 생성 (검색 불필요)
     track_uris = [f"spotify:track:{song['spotify_id']}" for song in target_songs]
-
     if track_uris:
-        add_tracks_to_playlist(playlist["id"], track_uris)
+        await asyncio.to_thread(add_tracks_to_playlist, playlist["id"], track_uris)
 
     return {
         "playlist_url": playlist.get("url"),
@@ -293,11 +336,45 @@ async def spotify_export(req: SpotifyExportRequest):
     }
 
 
+@app.post("/spotify/export-tracks", summary="특정 곡들을 새/기존 플레이리스트에 추가")
+async def spotify_export_tracks(req: SpotifyExportTracksRequest):
+    from pipeline.spotify import create_playlist, add_tracks_to_playlist
+
+    track_uris = [f"spotify:track:{sid}" for sid in req.spotify_ids]
+    if not track_uris:
+        raise HTTPException(status_code=400, detail="곡이 없습니다")
+
+    if req.playlist_id:
+        # 기존 플레이리스트에 추가
+        try:
+            await asyncio.to_thread(add_tracks_to_playlist, req.playlist_id, track_uris)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"추가 실패: {e}")
+        return {
+            "playlist_url": f"https://open.spotify.com/playlist/{req.playlist_id}",
+            "added": len(track_uris)
+        }
+    else:
+        # 새 플레이리스트 생성
+        try:
+            playlist = await asyncio.to_thread(
+                create_playlist, req.playlist_name,
+                req.description or f"Moodlist - {req.playlist_name}", req.public
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"플레이리스트 생성 실패: {e}")
+        await asyncio.to_thread(add_tracks_to_playlist, playlist["id"], track_uris)
+        return {
+            "playlist_url": playlist.get("url"),
+            "added": len(track_uris)
+        }
+
+
 @app.get("/search/suggestions", summary="Spotify 실시간 검색 제안")
 async def search_suggestions(q: str = Query(..., min_length=1)):
-    """입력 중인 쿼리로 Spotify 트랙 검색 (앨범 아트 포함)"""
     from pipeline.spotify import get_spotify_client_simple
-    try:
+
+    def _search():
         sp = get_spotify_client_simple()
         results = sp.search(q=q, type="track", limit=7)
         tracks = results.get("tracks", {}).get("items", [])
@@ -306,10 +383,13 @@ async def search_suggestions(q: str = Query(..., min_length=1)):
                 "spotify_id": t["id"],
                 "title": t["name"],
                 "artist": ", ".join(a["name"] for a in t["artists"]),
-                "image_url": t["album"]["images"][-1]["url"] if t["album"]["images"] else None,
+                "image_url": t["album"]["images"][0]["url"] if t["album"]["images"] else None,
             }
             for t in tracks
         ]
+
+    try:
+        return await asyncio.to_thread(_search)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -317,21 +397,33 @@ async def search_suggestions(q: str = Query(..., min_length=1)):
 @app.get("/spotify/auth", summary="Spotify 로그인 상태 확인")
 async def spotify_auth():
     from pipeline.spotify import is_logged_in, get_spotify_client_oauth
-    if not is_logged_in():
-        return {"logged_in": False}
-    try:
-        sp = get_spotify_client_oauth()
-        user = sp.current_user()
-        return {"logged_in": True, "user": user.get("display_name")}
-    except Exception as e:
-        return {"logged_in": False, "error": str(e)}
+
+    def _check():
+        if not is_logged_in():
+            return {"logged_in": False}
+        try:
+            sp = get_spotify_client_oauth()
+            user = sp.current_user()
+            return {"logged_in": True, "user": user.get("display_name")}
+        except Exception as e:
+            return {"logged_in": False, "error": str(e)}
+
+    return await asyncio.to_thread(_check)
+
+
+@app.delete("/spotify/auth", summary="Spotify 연동 해제")
+async def spotify_logout():
+    from pipeline.spotify import REPO_ROOT
+    cache_path = REPO_ROOT / ".spotify_cache"
+    if cache_path.exists():
+        cache_path.unlink()
+    return {"logged_in": False}
 
 
 @app.get("/spotify/login", summary="Spotify OAuth 로그인 URL 반환")
 async def spotify_login():
-    """프론트에서 받은 URL을 새 창으로 열어 로그인"""
     from pipeline.spotify import get_auth_url
-    return {"auth_url": get_auth_url()}
+    return {"auth_url": await asyncio.to_thread(get_auth_url)}
 
 
 @app.get("/spotify/callback", summary="Spotify OAuth 콜백 처리")
@@ -344,7 +436,7 @@ async def spotify_callback(code: str = Query(None), error: str = Query(None)):
         return HTMLResponse("<html><body><p>잘못된 요청</p></body></html>")
     from pipeline.spotify import exchange_code
     try:
-        exchange_code(code)
+        await asyncio.to_thread(exchange_code, code)
         return HTMLResponse(
             "<html><body style='font-family:sans-serif;display:flex;align-items:center;"
             "justify-content:center;height:100vh;margin:0'>"
@@ -361,10 +453,10 @@ async def spotify_callback(code: str = Query(None), error: str = Query(None)):
 @app.get("/spotify/me/playlists", summary="내 Spotify 플레이리스트 목록")
 async def my_playlists():
     from pipeline.spotify import is_logged_in, get_my_playlists
-    if not is_logged_in():
+    if not await asyncio.to_thread(is_logged_in):
         raise HTTPException(status_code=401, detail="Spotify 로그인이 필요합니다")
     try:
-        return get_my_playlists()
+        return await asyncio.to_thread(get_my_playlists)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -375,12 +467,12 @@ async def my_playlists():
 
 @app.get("/stats", summary="전체 통계")
 async def stats():
-    return get_stats()
+    return await asyncio.to_thread(get_stats)
 
 
 @app.get("/categories", summary="카테고리 목록")
 async def categories():
-    return get_all_categories()
+    return await asyncio.to_thread(get_all_categories)
 
 
 # ======================
