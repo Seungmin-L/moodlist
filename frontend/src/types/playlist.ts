@@ -54,6 +54,7 @@ export interface SpotifyPreviewTrack {
   title: string
   artist: string
   album: string
+  image_url?: string
 }
 
 export interface SpotifyMyPlaylist {

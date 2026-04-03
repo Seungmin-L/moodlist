@@ -272,18 +272,33 @@ async def spotify_import(req: SpotifyImportRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"플레이리스트 조회 실패: {e}")
 
+    from pipeline.classify import add_and_classify_by_id
+
     results = []
     for track in tracks:
         try:
-            result = await asyncio.to_thread(add_and_classify, track["title"], track["artist"])
+            if track.get("id"):
+                result = await asyncio.to_thread(
+                    add_and_classify_by_id,
+                    track["id"], track["title"], track["artist"],
+                    image_url=track.get("image_url")
+                )
+            else:
+                result = await asyncio.to_thread(add_and_classify, track["title"], track["artist"])
             results.append({
-                "title": track["title"],
-                "artist": track["artist"],
+                "title": result.get("title", track["title"]),
+                "artist": result.get("artist", track["artist"]),
                 "status": "ok",
                 "already_exists": result.get("already_exists", False),
                 "spotify_id": result.get("spotify_id"),
                 "mood": result.get("mood"),
-                "category": result.get("category")
+                "category": result.get("category"),
+                "album_art_url": result.get("album_art_url"),
+                "primary_emotion": result.get("primary_emotion"),
+                "emotions": result.get("emotions"),
+                "narrative": result.get("narrative"),
+                "confidence": result.get("confidence"),
+                "tags": result.get("tags"),
             })
         except Exception as e:
             results.append({

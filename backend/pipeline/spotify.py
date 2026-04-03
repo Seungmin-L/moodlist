@@ -141,7 +141,7 @@ def get_playlist_tracks(playlist_url: str, use_oauth: bool = False) -> list:
             playlist_id,
             offset=offset,
             limit=limit,
-            fields="items(track(id,name,uri,artists(name),album(name))),total"
+            fields="items(track(id,name,uri,artists(name),album(name,images))),total"
         )
         
         for item in results.get("items", []):
@@ -151,12 +151,16 @@ def get_playlist_tracks(playlist_url: str, use_oauth: bool = False) -> list:
             
             artists = ", ".join([a["name"] for a in track.get("artists", [])])
             
+            images = track.get("album", {}).get("images", [])
+            image_url = images[0]["url"] if images else None
+
             tracks.append({
                 "id": track.get("id", ""),
                 "uri": track.get("uri", ""),
                 "title": track.get("name", ""),
                 "artist": artists,
-                "album": track.get("album", {}).get("name", "")
+                "album": track.get("album", {}).get("name", ""),
+                "image_url": image_url,
             })
         
         offset += limit

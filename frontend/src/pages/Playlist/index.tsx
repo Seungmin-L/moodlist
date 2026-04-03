@@ -205,7 +205,7 @@ export default function Playlist() {
       const t = toImport[i]
       setProgress({ done: i, total: toImport.length, current: t.title })
       try {
-        const r = await addSong({ title: t.title, artist: t.artist, spotify_id: t.id })
+        const r = await addSong({ title: t.title, artist: t.artist, spotify_id: t.id, image_url: t.image_url })
         collected.push(r)
       } catch { /* skip */ }
     }

@@ -1,56 +1,65 @@
-import { useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { addSong, getSongs } from '../../api/songs'
-import type { Song } from '../../types'
-import FadeInSection from '../../components/common/FadeInSection'
-import AlbumArt from '../../components/common/AlbumArt'
-import CategoryBadge from '../../components/common/CategoryBadge'
-import SearchBar from './SearchBar'
-import styles from './Home.module.css'
+import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { addSong, getSongs } from "../../api/songs";
+import type { Song } from "../../types";
+import FadeInSection from "../../components/common/FadeInSection";
+import AlbumArt from "../../components/common/AlbumArt";
+import CategoryBadge from "../../components/common/CategoryBadge";
+import SearchBar from "./SearchBar";
+import styles from "./Home.module.css";
 
 export default function Home() {
-  const navigate = useNavigate()
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
-  const [recentSongs, setRecentSongs] = useState<Song[]>([])
-  const [artIndex, setArtIndex] = useState(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const navigate = useNavigate();
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [recentSongs, setRecentSongs] = useState<Song[]>([]);
+  const [artIndex, setArtIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    getSongs().then((songs) => setRecentSongs(songs.slice(0, 10))).catch(() => {})
-  }, [])
+    getSongs()
+      .then((songs) => setRecentSongs(songs.slice(0, 10)))
+      .catch(() => {});
+  }, []);
 
   // 5초마다 앨범아트 순환
-  const songsWithArt = recentSongs.filter((s) => s.album_art_url)
+  const songsWithArt = recentSongs.filter((s) => s.album_art_url);
   useEffect(() => {
-    if (songsWithArt.length <= 1) return
+    if (songsWithArt.length <= 1) return;
     timerRef.current = setInterval(() => {
-      setArtIndex((prev) => (prev + 1) % songsWithArt.length)
-    }, 5000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [songsWithArt.length])
+      setArtIndex((prev) => (prev + 1) % songsWithArt.length);
+    }, 5000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [songsWithArt.length]);
 
-  const handleSearch = async (title: string, artist: string, spotifyId?: string, imageUrl?: string) => {
-    setIsSearching(true)
-    setSearchError(null)
+  const handleSearch = async (
+    title: string,
+    artist: string,
+    spotifyId?: string,
+    imageUrl?: string,
+  ) => {
+    setIsSearching(true);
+    setSearchError(null);
     try {
       const result = await addSong({
         title,
         artist,
         ...(spotifyId ? { spotify_id: spotifyId } : {}),
         ...(imageUrl ? { image_url: imageUrl } : {}),
-      })
+      });
       // 분류 완료 → 곡 상세 페이지로 이동
-      navigate(`/song/${result.spotify_id}`)
+      navigate(`/song/${result.spotify_id}`);
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : '곡을 찾을 수 없습니다')
+      setSearchError(e instanceof Error ? e.message : "곡을 찾을 수 없습니다");
     } finally {
-      setIsSearching(false)
+      setIsSearching(false);
     }
-  }
+  };
 
-  const currentArtSong = songsWithArt[artIndex] ?? null
+  const currentArtSong = songsWithArt[artIndex] ?? null;
 
   return (
     <div className={styles.layout}>
@@ -84,8 +93,12 @@ export default function Home() {
                           alt={currentArtSong.title}
                           className={styles.screenArt}
                         />
-                        <p className={styles.screenTitle}>{currentArtSong.title}</p>
-                        <p className={styles.screenArtist}>{currentArtSong.artist}</p>
+                        <p className={styles.screenTitle}>
+                          {currentArtSong.title}
+                        </p>
+                        <p className={styles.screenArtist}>
+                          {currentArtSong.artist}
+                        </p>
                       </motion.div>
                     ) : (
                       <motion.div
@@ -96,7 +109,9 @@ export default function Home() {
                         exit={{ opacity: 0 }}
                       >
                         <div className={styles.screenIdleIcon}>♪</div>
-                        <p className={styles.screenIdleText}>곡을 검색해 보세요</p>
+                        <p className={styles.screenIdleText}>
+                          곡을 검색해 보세요
+                        </p>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -105,19 +120,30 @@ export default function Home() {
 
               {/* Click Wheel */}
               <div className={styles.clickWheel}>
-                <span className={`${styles.wheelLabel} ${styles.wheelTop}`}>MENU</span>
-                <span className={`${styles.wheelLabel} ${styles.wheelLeft}`}>◀◀</span>
-                <span className={`${styles.wheelLabel} ${styles.wheelRight}`}>▶▶</span>
-                <span className={`${styles.wheelLabel} ${styles.wheelBottom}`}>▶❚❚</span>
+                <span className={`${styles.wheelLabel} ${styles.wheelTop}`}>
+                  MENU
+                </span>
+                <span className={`${styles.wheelLabel} ${styles.wheelLeft}`}>
+                  ◀◀
+                </span>
+                <span className={`${styles.wheelLabel} ${styles.wheelRight}`}>
+                  ▶▶
+                </span>
+                <span className={`${styles.wheelLabel} ${styles.wheelBottom}`}>
+                  ▶❚❚
+                </span>
                 <div className={styles.wheelCenter} />
               </div>
             </div>
 
             <h1 className={styles.heroTitle}>
-              지금 내 감정에 맞는<br />노래를 찾아드려요
+              지금 내 감정과 상황에
+              <br />딱 맞는 노래를 찾는다면
             </h1>
             <p className={styles.heroSub}>
-              곡명과 아티스트를 입력하면<br />가사를 분석해 mood와 감정을 분류합니다
+              곡명과 아티스트를 입력하면
+              <br />
+              가사를 분석해 감정과 상황을 분류합니다
             </p>
           </div>
         </FadeInSection>
@@ -161,11 +187,15 @@ export default function Home() {
                   <div className={styles.songInfo}>
                     <div className={styles.songTitleRow}>
                       <span className={styles.songTitle}>{song.title}</span>
-                      {song.category && <CategoryBadge category={song.category} size="sm" />}
+                      {song.category && (
+                        <CategoryBadge category={song.category} size="sm" />
+                      )}
                     </div>
                     <span className={styles.songArtist}>{song.artist}</span>
                     {song.narrative && (
-                      <span className={styles.songNarrative}>{song.narrative}</span>
+                      <span className={styles.songNarrative}>
+                        {song.narrative}
+                      </span>
                     )}
                   </div>
                 </button>
@@ -179,5 +209,5 @@ export default function Home() {
         </FadeInSection>
       </div>
     </div>
-  )
+  );
 }
