@@ -50,3 +50,10 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
 urllib3==2.6.2
+uvicorn==0.42.0
+fastapi==0.135.2
+openai==2.30.0
+oracledb==3.4.2
+spotipy==2.25.2
+python-dotenv==1.2.1
+lyricsgenius==3.7.5
