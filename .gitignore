@@ -21,3 +21,4 @@ env/
 .DS_Store
 /pipeline/__pycache__
 /docs
+/backend/scripts
