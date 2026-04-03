@@ -182,20 +182,22 @@ def update_classification(spotify_id: str, result: dict = None, error: str = Non
         cursor.execute("""
             UPDATE songs SET
                 category        = :1,
-                mood            = :2,
-                mood_embedding  = :3,
-                emotions        = :4,
-                primary_emotion = :5,
-                emotional_arc   = :6,
-                tags            = :7,
-                narrative       = :8,
-                confidence      = :9,
+                sub_category    = :2,
+                mood            = :3,
+                mood_embedding  = :4,
+                emotions        = :5,
+                primary_emotion = :6,
+                emotional_arc   = :7,
+                tags            = :8,
+                narrative       = :9,
+                confidence      = :10,
                 status          = 'classified',
                 error_message   = NULL,
                 classified_at   = CURRENT_TIMESTAMP
-            WHERE spotify_id = :10
+            WHERE spotify_id = :11
         """, [
             result.get("category", "기타"),
+            result.get("sub_category", ""),
             result.get("mood", ""),
             oracle_vector,
             json.dumps(result.get("emotions", {}), ensure_ascii=False),
@@ -230,7 +232,7 @@ def get_song(spotify_id: str) -> dict | None:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT spotify_id, title, artist, lyrics, source_url, category, mood,
+        SELECT spotify_id, title, artist, lyrics, source_url, category, sub_category, mood,
                emotions, primary_emotion, emotional_arc, tags, narrative,
                confidence, status, error_message, album_art_url, created_at, classified_at
         FROM songs WHERE spotify_id = :1
@@ -253,7 +255,7 @@ def get_songs_by_category(category: str = None) -> list:
     cursor = conn.cursor()
     if category:
         cursor.execute("""
-            SELECT spotify_id, title, artist, category, mood, emotions,
+            SELECT spotify_id, title, artist, category, sub_category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
                    confidence, status, album_art_url, classified_at
             FROM songs
@@ -262,7 +264,7 @@ def get_songs_by_category(category: str = None) -> list:
         """, [category])
     else:
         cursor.execute("""
-            SELECT spotify_id, title, artist, category, mood, emotions,
+            SELECT spotify_id, title, artist, category, sub_category, mood, emotions,
                    primary_emotion, emotional_arc, tags, narrative,
                    confidence, status, album_art_url, classified_at
             FROM songs
