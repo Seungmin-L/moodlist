@@ -299,30 +299,59 @@ def get_all_categories() -> list:
 # ======================
 
 def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
+    """
+    2축 하이브리드 유사도: text embedding (0.6) + emotion vector (0.4)
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT mood_embedding FROM songs WHERE spotify_id = :1", [spotify_id])
+    cursor.execute(
+        "SELECT mood_embedding, emotion_vector FROM songs WHERE spotify_id = :1",
+        [spotify_id],
+    )
     row = cursor.fetchone()
     if not row or row[0] is None:
         conn.close()
         return []
 
-    query_vector = row[0]
+    query_emb = row[0]
+    query_emo = row[1]
 
-    cursor.execute("""
-        SELECT spotify_id, title, artist, mood, category, album_art_url,
-               VECTOR_DISTANCE(mood_embedding, :1, COSINE) AS similarity
-        FROM songs
-        WHERE status = 'classified'
-          AND mood_embedding IS NOT NULL
-          AND spotify_id != :2
-        ORDER BY similarity
-        FETCH FIRST :3 ROWS ONLY
-    """, [query_vector, spotify_id, top_k])
+    if query_emo is not None:
+        cursor.execute("""
+            SELECT spotify_id, title, artist, mood, category, album_art_url,
+                   VECTOR_DISTANCE(mood_embedding, :1, COSINE) AS emb_dist,
+                   VECTOR_DISTANCE(emotion_vector, :2, COSINE) AS emo_dist
+            FROM songs
+            WHERE status = 'classified'
+              AND mood_embedding IS NOT NULL
+              AND spotify_id != :3
+        """, [query_emb, query_emo, spotify_id])
+        rows = cursor.fetchall()
+        cols = [c[0].lower() for c in cursor.description]
+        scored = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            emb_d = d.pop("emb_dist", 1.0) or 1.0
+            emo_d = d.pop("emo_dist", 1.0) or 1.0
+            d["similarity"] = 0.6 * emb_d + 0.4 * emo_d
+            scored.append(d)
+        scored.sort(key=lambda x: x["similarity"])
+        result = scored[:top_k]
+    else:
+        cursor.execute("""
+            SELECT spotify_id, title, artist, mood, category, album_art_url,
+                   VECTOR_DISTANCE(mood_embedding, :1, COSINE) AS similarity
+            FROM songs
+            WHERE status = 'classified'
+              AND mood_embedding IS NOT NULL
+              AND spotify_id != :2
+            ORDER BY similarity
+            FETCH FIRST :3 ROWS ONLY
+        """, [query_emb, spotify_id, top_k])
+        rows = cursor.fetchall()
+        result = [_row_to_dict(cursor, row) for row in rows]
 
-    rows = cursor.fetchall()
-    result = [_row_to_dict(cursor, row) for row in rows]
     conn.close()
     return result
 
@@ -336,10 +365,10 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 전체 분류된 곡 + 임베딩 + narrative 한 번에 가져오기
+    # 전체 분류된 곡 + 임베딩 + emotion_vector + narrative 한 번에 가져오기
     cursor.execute("""
         SELECT spotify_id, title, artist, mood, category, album_art_url,
-               narrative, mood_embedding
+               narrative, mood_embedding, emotion_vector
         FROM songs
         WHERE status = 'classified' AND mood_embedding IS NOT NULL
         ORDER BY classified_at
@@ -352,7 +381,7 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
 
     # 컬럼 인덱스 매핑
     col_names = ["spotify_id", "title", "artist", "mood", "category",
-                 "album_art_url", "narrative", "mood_embedding"]
+                 "album_art_url", "narrative", "mood_embedding", "emotion_vector"]
 
     songs = []
     for row in all_rows:
@@ -377,16 +406,12 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
             return 1.0
         return 1.0 - dot / (na * nb)
 
-    # mood_embedding을 list[float]로 변환
+    # mood_embedding + emotion_vector를 list[float]로 변환
     for s in songs:
         emb = s["mood_embedding"]
-        if emb is not None:
-            try:
-                s["_vec"] = list(emb)
-            except Exception:
-                s["_vec"] = []
-        else:
-            s["_vec"] = []
+        s["_vec"] = list(emb) if emb is not None else []
+        emo = s.get("emotion_vector")
+        s["_emo"] = list(emo) if emo is not None else []
 
     grouped_ids: set = set()
     groups = []
@@ -399,10 +424,17 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
         if not seed_vec:
             continue
 
-        # seed와 유사한 곡들 계산
+        seed_emo = seed["_emo"]
+
+        # 2축 하이브리드: text embedding (0.6) + emotion vector (0.4)
         scored = []
         for s in songs:
-            dist = cosine_dist(seed_vec, s["_vec"])
+            emb_d = cosine_dist(seed_vec, s["_vec"])
+            if seed_emo and s["_emo"]:
+                emo_d = cosine_dist(seed_emo, s["_emo"])
+                dist = 0.6 * emb_d + 0.4 * emo_d
+            else:
+                dist = emb_d
             scored.append((dist, s))
 
         scored.sort(key=lambda x: x[0])
@@ -413,7 +445,8 @@ def group_songs_by_mood(top_k_per_group: int = 20) -> list:
 
         # 반환 형태에서 내부 필드 제거
         clean_songs = [
-            {k: v for k, v in s.items() if k != "_vec" and k != "mood_embedding"}
+            {k: v for k, v in s.items()
+             if k not in ("_vec", "_emo", "mood_embedding", "emotion_vector")}
             for s in group_songs
         ]
 
