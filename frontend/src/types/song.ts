@@ -12,6 +12,7 @@ export interface Song {
   title: string
   artist: string
   category: Category | null
+  sub_category: string | null
   mood: string | null
   emotions: Emotions | null
   primary_emotion: string | null
@@ -37,6 +38,7 @@ export interface SimilarSong {
   artist: string
   mood: string | null
   category: Category | null
+  sub_category: string | null
   album_art_url: string | null
   similarity: number
 }

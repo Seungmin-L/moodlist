@@ -9,7 +9,7 @@
 /* size variants */
 .sm  { gap: 4px; }
 .md  { padding: var(--space-xl) 0; }
-.lg  { min-height: 40vh; padding: var(--space-xl) 0; }
+.lg  { min-height: calc(100vh - var(--header-height) - 80px); padding: var(--space-xl) 0; }
 
 .wave {
   display: block;

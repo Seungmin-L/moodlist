@@ -3,8 +3,6 @@ import { motion } from 'framer-motion'
 import type { Song } from '../../types'
 import CategoryBadge from './CategoryBadge'
 import AlbumArt from './AlbumArt'
-import MiniWaveform from './MiniWaveform'
-import { getMoodColor } from '../../utils/moodColor'
 import styles from './SongCard.module.css'
 
 interface Props {
@@ -14,7 +12,6 @@ interface Props {
 
 export default function SongCard({ song, index }: Props) {
   const navigate = useNavigate()
-  const moodColor = getMoodColor(song.category)
   const hasIndex = index != null
 
   return (
@@ -40,9 +37,6 @@ export default function SongCard({ song, index }: Props) {
         {song.category && <CategoryBadge category={song.category} size="sm" />}
       </div>
 
-      <div className={styles.waveWrap}>
-        <MiniWaveform color={moodColor} bars={12} opacity={0.25} width={56} height={18} />
-      </div>
     </motion.div>
   )
 }

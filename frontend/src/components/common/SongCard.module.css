@@ -1,6 +1,6 @@
 .row {
   display: grid;
-  grid-template-columns: 24px 40px 1fr 56px;
+  grid-template-columns: 24px 40px 1fr;
   align-items: center;
   gap: 10px;
   padding: 10px var(--space-md);
@@ -10,12 +10,11 @@
 }
 
 .rowNoIndex {
-  grid-template-columns: 40px 1fr 56px;
+  grid-template-columns: 40px 1fr;
 }
 
 /* last-child border removed: container overflow:hidden handles the edge */
 .row:hover { background: var(--bg-secondary); }
-.row:hover .waveWrap { opacity: 0.8; }
 
 .index {
   font-size: 12px;
@@ -50,11 +49,3 @@
   text-overflow: ellipsis;
 }
 
-.waveWrap {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  opacity: 0.35;
-  transition: opacity var(--transition);
-  flex-shrink: 0;
-}

@@ -85,6 +85,9 @@ export default function SongDetail() {
               {(song.category || song.confidence != null) && (
                 <div className={styles.metaLine}>
                   {song.category && <CategoryBadge category={song.category} />}
+                  {song.sub_category && (
+                    <span className={styles.subCategoryBadge}>{song.sub_category}</span>
+                  )}
                   {song.confidence != null && (
                     <span className={styles.confidence}>{Math.round(song.confidence * 100)}%</span>
                   )}
@@ -147,7 +150,7 @@ export default function SongDetail() {
             <h2 className={styles.sectionTitle}>유사한 곡들</h2>
             <div className={styles.similarGrid}>
               {similar.map((s) => (
-                <SongCard key={s.spotify_id} song={{ ...s, status: 'classified', classified_at: null, emotions: null, primary_emotion: null, emotional_arc: null, tags: null, narrative: null, confidence: null, album_art_url: s.album_art_url ?? null }} />
+                <SongCard key={s.spotify_id} song={{ ...s, status: 'classified', classified_at: null, emotions: null, primary_emotion: null, emotional_arc: null, tags: null, narrative: null, confidence: null, sub_category: s.sub_category ?? null, album_art_url: s.album_art_url ?? null }} />
               ))}
             </div>
           </div>

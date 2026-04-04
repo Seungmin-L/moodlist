@@ -92,6 +92,38 @@
 }
 .pillActive:hover { background: #2c2c2e; }
 
+.subPill {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  transition: all var(--transition);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.subPill:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.subPillActive {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.subPillActive:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.subCat {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
 /* ── Song List ───────────────────────────────────────────── */
 .songList {
   background: var(--card-bg);
