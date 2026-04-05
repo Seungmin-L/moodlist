@@ -6,7 +6,9 @@
   padding: 10px var(--space-md);
   border-bottom: 1px solid var(--border-default);
   cursor: pointer;
-  transition: background var(--transition), box-shadow var(--transition);
+  transition:
+    background var(--transition),
+    box-shadow var(--transition);
 }
 
 .rowNoIndex {
@@ -14,7 +16,9 @@
 }
 
 /* last-child border removed: container overflow:hidden handles the edge */
-.row:hover { background: var(--bg-secondary); }
+.row:hover {
+  background: var(--bg-secondary);
+}
 
 .index {
   font-size: 12px;
@@ -48,4 +52,3 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
