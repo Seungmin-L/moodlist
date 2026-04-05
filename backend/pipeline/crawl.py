@@ -304,11 +304,46 @@ def _title_exact_match(query_title: str, candidate_title: str) -> bool:
     return bool(compact_queries & compact_aliases)
 
 
-def _search_artist_candidates_public(anchor_artist: str, max_candidates: int = 30) -> List[dict]:
-    response = _genius_public_get(
-        "/search/artist",
-        params={"q": anchor_artist, "per_page": max_candidates},
+def _search_artist_candidates_authenticated(anchor_artist: str, token: str = None, max_candidates: int = 30) -> List[dict]:
+    """인증 API로 아티스트 후보 검색 (Public API 403 fallback)"""
+    response = _genius_api_get(
+        "/search",
+        token=token,
+        params={"q": anchor_artist, "per_page": min(max_candidates, 20)},
     )
+
+    hits = response.get("hits", []) or []
+    dedup = {}
+    for hit in hits:
+        result = hit.get("result", {}) or {}
+        primary = result.get("primary_artist", {}) or {}
+        artist_id = primary.get("id")
+        artist_name = (primary.get("name") or "").strip()
+        if not artist_id or not artist_name:
+            continue
+        if artist_id in dedup:
+            continue
+        dedup[artist_id] = {
+            "id": artist_id,
+            "name": artist_name,
+            "url": primary.get("url", ""),
+            "api_path": primary.get("api_path", ""),
+        }
+        if len(dedup) >= max_candidates:
+            break
+
+    return list(dedup.values())
+
+
+def _search_artist_candidates_public(anchor_artist: str, token: str = None, max_candidates: int = 30) -> List[dict]:
+    try:
+        response = _genius_public_get(
+            "/search/artist",
+            params={"q": anchor_artist, "per_page": max_candidates},
+        )
+    except Exception:
+        # Public API 차단 시 인증 API로 fallback
+        return _search_artist_candidates_authenticated(anchor_artist, token=token, max_candidates=max_candidates)
 
     sections = response.get("sections", []) or []
     artist_hits = []
@@ -554,7 +589,7 @@ def search_song_with_diagnostics(
         return [], diagnostics
 
     try:
-        artist_candidates = _search_artist_candidates_public(anchor_artist, max_candidates=30)
+        artist_candidates = _search_artist_candidates_public(anchor_artist, token=token, max_candidates=30)
         ranked_candidates = _rank_public_artist_candidates(anchor_artist, artist_candidates)
         diagnostics["artist_candidate_count"] = len(ranked_candidates)
         diagnostics["artist_candidates"] = ranked_candidates[:5]
