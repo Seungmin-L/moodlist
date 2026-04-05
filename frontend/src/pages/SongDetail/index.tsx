@@ -8,7 +8,6 @@ import CategoryBadge from '../../components/common/CategoryBadge'
 import EmotionsChart from '../../components/common/EmotionsChart'
 import AlbumArt from '../../components/common/AlbumArt'
 import SongCard from '../../components/common/SongCard'
-import LoadingSpinner from '../../components/common/LoadingSpinner'
 import FadeInSection from '../../components/common/FadeInSection'
 import styles from './SongDetail.module.css'
 
@@ -50,7 +49,34 @@ export default function SongDetail() {
     }
   }
 
-  if (loading) return <LoadingSpinner size="lg" label="곡 정보를 불러오는 중..." />
+  if (loading) return (
+    <div className={styles.page}>
+      <div className={styles.topBar}>
+        <button className={styles.backBtn} onClick={() => navigate(-1)}>
+          <ArrowLeft size={18} /> 뒤로
+        </button>
+      </div>
+      <div className={styles.mainCard}>
+        <div className={styles.cardTop}>
+          <div className={`${styles.skelCircle} ${styles.skeleton}`} />
+          <div className={styles.info}>
+            <div className={`${styles.skelLine} ${styles.skelTitle} ${styles.skeleton}`} />
+            <div className={`${styles.skelLine} ${styles.skelArtist} ${styles.skeleton}`} />
+            <div className={`${styles.skelLine} ${styles.skelMeta} ${styles.skeleton}`} />
+          </div>
+        </div>
+        <div className={styles.skelSection}>
+          <div className={`${styles.skelLine} ${styles.skelLabel} ${styles.skeleton}`} />
+          <div className={`${styles.skelBar} ${styles.skeleton}`} />
+          <div className={`${styles.skelBar} ${styles.skeleton}`} />
+        </div>
+        <div className={styles.skelSection}>
+          <div className={`${styles.skelLine} ${styles.skelLabel} ${styles.skeleton}`} />
+          <div className={`${styles.skelBlock} ${styles.skeleton}`} />
+        </div>
+      </div>
+    </div>
+  )
   if (error || !song) return (
     <div className={styles.errorWrap}>
       <p>{error ?? '곡을 찾을 수 없습니다'}</p>

@@ -255,6 +255,71 @@
 @media (min-width: 640px) { .similarGrid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1024px) { .similarGrid { grid-template-columns: repeat(3, 1fr); } }
 
+/* ── Skeleton ────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skelCircle {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .skelCircle {
+    align-self: center;
+  }
+}
+
+.skelLine {
+  height: 14px;
+}
+
+.skelTitle {
+  width: 60%;
+  height: 22px;
+}
+
+.skelArtist {
+  width: 40%;
+}
+
+.skelMeta {
+  width: 30%;
+  height: 12px;
+}
+
+.skelLabel {
+  width: 60px;
+  height: 10px;
+}
+
+.skelBar {
+  height: 40px;
+  border-radius: var(--radius-lg);
+}
+
+.skelBlock {
+  height: 100px;
+  border-radius: var(--radius-lg);
+}
+
+.skelSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
 .errorWrap {
   display: flex;
   flex-direction: column;
