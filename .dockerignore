@@ -1,0 +1,12 @@
+.env
+.env.*
+.git
+.gitignore
+node_modules
+frontend/node_modules
+__pycache__
+*.pyc
+.spotify_cache
+docs/
+everything-claude-code/
+CLAUDE.md
