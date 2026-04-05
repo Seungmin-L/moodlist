@@ -34,7 +34,7 @@ SCOPES = [
 ]
 
 # Spotify Developer Console 에도 동일 URI 등록 필요
-REDIRECT_URI = "http://127.0.0.1:8000/spotify/callback"
+REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8000/spotify/callback")
 
 
 def get_spotify_client_simple():
