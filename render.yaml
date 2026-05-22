@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: moodlist
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GENIUS_ACCESS_TOKEN
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ORACLE_USER
+        sync: false
+      - key: ORACLE_PASSWORD
+        sync: false
+      - key: ORACLE_DSN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SPOTIFY_REDIRECT_URI
+        sync: false
