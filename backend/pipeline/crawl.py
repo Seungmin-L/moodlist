@@ -822,18 +822,18 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         print(f"[bugs]   status_code={page.status_code}")
         soup = BeautifulSoup(page.text, "html.parser")
 
-        # 가사 컨테이너 후보 탐색 (구조 확인용 — 처음 실행 시 로그로 확인)
-        candidates = [
-            soup.find("div", class_="lyrics"),
-            soup.find("div", id="lyrics"),
-            soup.find("xmp"),
-            soup.find("p", class_="lyrics"),
+        # 가사 컨테이너 후보 탐색 — 곡마다 구조가 다를 수 있어 선택자별 결과를 로그로 유지
+        selectors = [
+            ("div.lyrics",  soup.find("div", class_="lyrics")),
+            ("div#lyrics",  soup.find("div", id="lyrics")),
+            ("xmp",         soup.find("xmp")),
+            ("p.lyrics",    soup.find("p", class_="lyrics")),
         ]
-        for i, c in enumerate(candidates):
+        for name, c in selectors:
             preview = repr(c.get_text()[:80].strip()) if c else None
-            print(f"[bugs]   selector[{i}] found={c is not None}, preview={preview}")
+            print(f"[bugs]   selector={name!r} found={c is not None}, preview={preview}")
 
-        lyric_el = next((c for c in candidates if c), None)
+        lyric_el = next((c for _, c in selectors if c), None)
         if not lyric_el:
             # 못 찾으면 HTML 일부 출력해서 구조 파악
             print(f"[bugs]   가사 컨테이너 못 찾음, body 일부:")
