@@ -30,7 +30,7 @@ from db.database import (
     update_classification,
     update_lyrics
 )
-from pipeline.crawl import search_song_with_diagnostics, filter_original_korean, get_lyrics
+from pipeline.crawl import search_song_with_diagnostics, filter_original_korean, get_lyrics, search_lyrics_naver
 from pipeline.spotify import search_track
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -302,27 +302,50 @@ def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: 
     Spotify ID가 확정된 곡 추가 + 분류 (Spotify 검색 스킵).
     유저가 suggestions에서 직접 선택한 경우 사용.
     """
+    print(f"[pipeline] ▶ 입력값")
+    print(f"[pipeline]   spotify_id : {spotify_id!r}")
+    print(f"[pipeline]   title      : {title!r}  (type={type(title).__name__}, len={len(title)})")
+    print(f"[pipeline]   artist     : {artist!r}  (type={type(artist).__name__}, len={len(artist)})")
+    print(f"[pipeline]   image_url  : {image_url!r}")
+
     db_result = insert_song(spotify_id, title, artist, album_art_url=image_url)
+    print(f"[pipeline] ▶ DB insert → already_exists={db_result.get('already_exists')}, status={db_result.get('status')!r}")
     if db_result["already_exists"] and db_result.get("status") == "classified":
-        print(f"이미 분류된 곡: {title} - {artist}")
+        print(f"[pipeline] 이미 분류된 곡, 즉시 반환")
         return db_result
 
+    print(f"[pipeline] ▶ Genius 검색 시작 — title={title!r}, artist={artist!r}")
     results, diagnostics = search_song_with_diagnostics(title=title, artist=artist, limit=20)
+    print(f"[pipeline]   검색 결과 수: {len(results)}")
+    for i, r in enumerate(results[:5]):
+        print(f"[pipeline]   [{i}] title={r.get('title')!r}, artist={r.get('artist')!r}, url={r.get('url')!r}")
+
     filtered = filter_original_korean(results) or results
+    print(f"[pipeline] ▶ filter_original_korean 후 결과 수: {len(filtered)}")
+    for i, r in enumerate(filtered[:3]):
+        print(f"[pipeline]   [{i}] title={r.get('title')!r}, artist={r.get('artist')!r}")
 
-    if not filtered:
-        error_msg = f"Genius에서 가사를 찾을 수 없음: {title} - {artist}"
-        update_classification(spotify_id, error=error_msg)
-        raise ValueError(error_msg)
+    lyrics = None
 
-    lyrics = get_lyrics(song_url=filtered[0]["url"])
+    if filtered:
+        print(f"[pipeline] ▶ 가사 크롤링 — url={filtered[0]['url']!r}")
+        lyrics = get_lyrics(song_url=filtered[0]["url"])
+        print(f"[pipeline]   가사 길이: {len(lyrics) if lyrics else 0}자")
+
     if not lyrics:
-        error_msg = "가사를 가져올 수 없음"
+        print(f"[pipeline] ▶ Genius 실패, Naver fallback 시도 — title={title!r}, artist={artist!r}")
+        lyrics = search_lyrics_naver(title, artist)
+
+    if not lyrics:
+        error_msg = f"Genius/Naver 모두 가사를 찾을 수 없음: {title} - {artist}"
+        print(f"[pipeline] ✗ {error_msg}")
         update_classification(spotify_id, error=error_msg)
         raise ValueError(error_msg)
 
     update_lyrics(spotify_id, lyrics)
+    print(f"[pipeline] ▶ LLM 분류 시작")
     classification = classify_song(spotify_id)
+    print(f"[pipeline] ✓ 분류 완료 — category={classification.get('category')!r}, mood={classification.get('mood')!r}")
 
     return {
         "spotify_id": spotify_id,

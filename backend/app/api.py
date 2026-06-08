@@ -279,7 +279,11 @@ async def spotify_import(req: SpotifyImportRequest):
     from pipeline.classify import add_and_classify_by_id
 
     results = []
-    for track in tracks:
+    for idx, track in enumerate(tracks):
+        print(f"[import] ── 곡 {idx+1}/{len(tracks)} ──────────────────────")
+        print(f"[import]   spotify_id : {track.get('id')!r}")
+        print(f"[import]   title      : {track.get('title')!r}  (type={type(track.get('title')).__name__})")
+        print(f"[import]   artist     : {track.get('artist')!r}  (type={type(track.get('artist')).__name__})")
         try:
             if track.get("id"):
                 result = await asyncio.to_thread(
