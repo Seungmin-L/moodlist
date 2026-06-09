@@ -820,102 +820,35 @@ def _scrape_bugs_lyrics(url: str) -> str | None:
         return None
 
 
-def _search_naver_music_api(title: str, artist: str, client_id: str, client_secret: str) -> str | None:
+def _extract_korean_artist(items: list, english_artist: str) -> str | None:
     """
-    Naver music.json API로 트랙 검색 → music.naver.com 가사 페이지 스크래핑.
-    webkr 검색이 bugs 링크를 반환하지 않을 때 사용.
+    webkr 결과 제목에서 영문 아티스트명 앞에 붙은 한글명 추출.
+    예: "이해할 수 없는 것들 ... | 안희수 Ahn Heesu | ..." → "안희수"
     """
-    import requests
-    from bs4 import BeautifulSoup
+    from collections import Counter
 
-    query = f"{title} {artist}"
-    print(f"[naver_music] ▶ music API 검색 — query={query!r}")
-
-    try:
-        resp = requests.get(
-            "https://openapi.naver.com/v1/search/music.json",
-            params={"query": query, "display": 5},
-            headers={
-                "X-Naver-Client-Id": client_id,
-                "X-Naver-Client-Secret": client_secret,
-            },
-            timeout=10,
-        )
-        print(f"[naver_music]   status_code={resp.status_code}")
-        resp.raise_for_status()
-        items = resp.json().get("items", [])
-    except Exception as e:
-        print(f"[naver_music] 검색 실패: {e}")
+    norm_english = re.sub(r"[^a-z]", "", english_artist.lower())
+    if not norm_english:
         return None
 
-    print(f"[naver_music]   검색 결과 수: {len(items)}")
-    for i, item in enumerate(items):
-        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
-        raw_artist = re.sub(r"<[^>]+>", "", item.get("artist", ""))
-        print(f"[naver_music]   [{i}] title={raw_title!r}, artist={raw_artist!r}, link={item.get('link')!r}")
-
-    def _music_matches(item_title: str, item_artist: str) -> bool:
-        norm_title = re.sub(r"[^a-z0-9가-힣]", "", title.lower())
-        norm_item_title = re.sub(r"[^a-z0-9가-힣]", "", item_title.lower())
-        norm_artist = re.sub(r"[^a-z0-9가-힣]", "", artist.lower())
-        norm_item_artist = re.sub(r"[^a-z0-9가-힣]", "", item_artist.lower())
-        title_match = norm_title and norm_title in norm_item_title
-        artist_match = norm_artist and norm_artist in norm_item_artist
-        return title_match and artist_match
-
-    selected_link = None
+    candidates = []
     for item in items:
-        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
-        raw_artist = re.sub(r"<[^>]+>", "", item.get("artist", ""))
-        link = item.get("link", "")
-        if _music_matches(raw_title, raw_artist):
-            selected_link = link
-            print(f"[naver_music] ▶ 매칭: {raw_title!r} / {raw_artist!r} → {link!r}")
-            break
-        else:
-            print(f"[naver_music]   스킵 (불일치): {raw_title!r} / {raw_artist!r}")
+        combined = re.sub(r"<[^>]+>", "", item.get("title", "") + " " + item.get("description", ""))
+        # 영문 아티스트명이 포함된 결과에서만 추출
+        if norm_english not in re.sub(r"[^a-z]", "", combined.lower()):
+            continue
+        # "[한글]{2,6} [영문아티스트]" 패턴에서 한글명 추출
+        pattern = rf'([가-힣]{{2,6}})\s+{re.escape(english_artist)}'
+        match = re.search(pattern, combined, re.IGNORECASE)
+        if match:
+            candidates.append(match.group(1))
 
-    if not selected_link:
-        print("[naver_music] 일치하는 트랙 없음")
+    if not candidates:
         return None
 
-    # music.naver.com 가사 페이지 URL로 변환
-    # 예: https://music.naver.com/song/index.nhn?trackId=XXXXX
-    # 가사 페이지: https://music.naver.com/lyric/index.nhn?trackId=XXXXX
-    lyric_url = selected_link.replace("/song/index.nhn", "/lyric/index.nhn").replace("/song/index.naver", "/lyric/index.naver")
-    print(f"[naver_music] ▶ 가사 페이지 스크래핑 — url={lyric_url!r}")
-
-    try:
-        page = requests.get(
-            lyric_url,
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
-            timeout=10,
-        )
-        print(f"[naver_music]   status_code={page.status_code}")
-        soup = BeautifulSoup(page.text, "html.parser")
-
-        selectors = [
-            ("div.wrap_lyrics", soup.find("div", class_="wrap_lyrics")),
-            ("p.ly",            soup.find("p", class_="ly")),
-            ("div#lyricText",   soup.find("div", id="lyricText")),
-            ("xmp",             soup.find("xmp")),
-        ]
-        for name, c in selectors:
-            preview = repr(c.get_text()[:80].strip()) if c else None
-            print(f"[naver_music]   selector={name!r} found={c is not None}, preview={preview}")
-
-        lyric_el = next((c for _, c in selectors if c), None)
-        if not lyric_el:
-            print(f"[naver_music]   가사 컨테이너 못 찾음, body 일부:")
-            print(page.text[2000:4000])
-            return None
-
-        lyrics = lyric_el.get_text(separator="\n").strip()
-        print(f"[naver_music] ✓ 가사 추출 완료 — {len(lyrics)}자")
-        return lyrics if lyrics else None
-    except Exception as e:
-        print(f"[naver_music] 스크래핑 실패: {e}")
-        return None
+    korean_name = Counter(candidates).most_common(1)[0][0]
+    print(f"[naver] ▶ 한글 아티스트명 추출: {english_artist!r} → {korean_name!r}")
+    return korean_name
 
 
 def search_lyrics_naver(title: str, artist: str) -> str | None:
@@ -988,9 +921,50 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         if lyrics:
             return lyrics
 
-    # 2단계: music.json API → music.naver.com
-    print("[naver] 벅스 링크 없음, Naver Music API fallback 시도")
-    return _search_naver_music_api(title, artist, client_id, client_secret)
+    # 2단계: webkr 결과에서 한글 아티스트명 추출 → 한글명으로 재검색
+    korean_artist = _extract_korean_artist(items, artist)
+    if not korean_artist:
+        print("[naver] 한글 아티스트명 추출 실패, fallback 중단")
+        return None
+
+    query2 = f"{title} {korean_artist} 가사"
+    print(f"[naver] ▶ 한글명으로 재검색 — query={query2!r}")
+
+    try:
+        resp2 = requests.get(
+            "https://openapi.naver.com/v1/search/webkr.json",
+            params={"query": query2, "display": 5},
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+            },
+            timeout=10,
+        )
+        resp2.raise_for_status()
+        items2 = resp2.json().get("items", [])
+    except Exception as e:
+        print(f"[naver] 재검색 실패: {e}")
+        return None
+
+    print(f"[naver]   재검색 결과 수: {len(items2)}")
+    for i, item in enumerate(items2):
+        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+        print(f"[naver]   [{i}] title={raw_title!r}, link={item.get('link')!r}")
+
+    for item in items2:
+        link = item.get("link", "")
+        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+        if "music.bugs.co.kr/track/" in link:
+            if _matches_query(raw_title, title, korean_artist):
+                print(f"[naver] ▶ 재검색 벅스 링크 선택: {link!r} (title={raw_title!r})")
+                lyrics = _scrape_bugs_lyrics(link)
+                if lyrics:
+                    return lyrics
+            else:
+                print(f"[naver]   재검색 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
+
+    print("[naver] 재검색에서도 벅스 링크 없음, fallback 중단")
+    return None
 
 
 def filter_original_korean(results: list):
