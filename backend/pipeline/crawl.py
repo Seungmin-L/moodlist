@@ -782,11 +782,147 @@ def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
         return None
 
 
+def _scrape_bugs_lyrics(url: str) -> str | None:
+    """bugs.co.kr 트랙 페이지에서 가사 스크래핑"""
+    import requests
+    from bs4 import BeautifulSoup
+
+    try:
+        page = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            timeout=10,
+        )
+        print(f"[bugs]   status_code={page.status_code}")
+        soup = BeautifulSoup(page.text, "html.parser")
+
+        selectors = [
+            ("div.lyrics", soup.find("div", class_="lyrics")),
+            ("div#lyrics", soup.find("div", id="lyrics")),
+            ("xmp",        soup.find("xmp")),
+            ("p.lyrics",   soup.find("p", class_="lyrics")),
+        ]
+        for name, c in selectors:
+            preview = repr(c.get_text()[:80].strip()) if c else None
+            print(f"[bugs]   selector={name!r} found={c is not None}, preview={preview}")
+
+        lyric_el = next((c for _, c in selectors if c), None)
+        if not lyric_el:
+            print(f"[bugs]   가사 컨테이너 못 찾음, body 일부:")
+            print(page.text[2000:4000])
+            return None
+
+        lyrics = lyric_el.get_text(separator="\n").strip()
+        print(f"[bugs] ✓ 가사 추출 완료 — {len(lyrics)}자")
+        return lyrics if lyrics else None
+    except Exception as e:
+        print(f"[bugs] 스크래핑 실패: {e}")
+        return None
+
+
+def _search_naver_music_api(title: str, artist: str, client_id: str, client_secret: str) -> str | None:
+    """
+    Naver music.json API로 트랙 검색 → music.naver.com 가사 페이지 스크래핑.
+    webkr 검색이 bugs 링크를 반환하지 않을 때 사용.
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    query = f"{title} {artist}"
+    print(f"[naver_music] ▶ music API 검색 — query={query!r}")
+
+    try:
+        resp = requests.get(
+            "https://openapi.naver.com/v1/search/music.json",
+            params={"query": query, "display": 5},
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+            },
+            timeout=10,
+        )
+        print(f"[naver_music]   status_code={resp.status_code}")
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
+    except Exception as e:
+        print(f"[naver_music] 검색 실패: {e}")
+        return None
+
+    print(f"[naver_music]   검색 결과 수: {len(items)}")
+    for i, item in enumerate(items):
+        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+        raw_artist = re.sub(r"<[^>]+>", "", item.get("artist", ""))
+        print(f"[naver_music]   [{i}] title={raw_title!r}, artist={raw_artist!r}, link={item.get('link')!r}")
+
+    def _music_matches(item_title: str, item_artist: str) -> bool:
+        norm_title = re.sub(r"[^a-z0-9가-힣]", "", title.lower())
+        norm_item_title = re.sub(r"[^a-z0-9가-힣]", "", item_title.lower())
+        norm_artist = re.sub(r"[^a-z0-9가-힣]", "", artist.lower())
+        norm_item_artist = re.sub(r"[^a-z0-9가-힣]", "", item_artist.lower())
+        title_match = norm_title and norm_title in norm_item_title
+        artist_match = norm_artist and norm_artist in norm_item_artist
+        return title_match and artist_match
+
+    selected_link = None
+    for item in items:
+        raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+        raw_artist = re.sub(r"<[^>]+>", "", item.get("artist", ""))
+        link = item.get("link", "")
+        if _music_matches(raw_title, raw_artist):
+            selected_link = link
+            print(f"[naver_music] ▶ 매칭: {raw_title!r} / {raw_artist!r} → {link!r}")
+            break
+        else:
+            print(f"[naver_music]   스킵 (불일치): {raw_title!r} / {raw_artist!r}")
+
+    if not selected_link:
+        print("[naver_music] 일치하는 트랙 없음")
+        return None
+
+    # music.naver.com 가사 페이지 URL로 변환
+    # 예: https://music.naver.com/song/index.nhn?trackId=XXXXX
+    # 가사 페이지: https://music.naver.com/lyric/index.nhn?trackId=XXXXX
+    lyric_url = selected_link.replace("/song/index.nhn", "/lyric/index.nhn").replace("/song/index.naver", "/lyric/index.naver")
+    print(f"[naver_music] ▶ 가사 페이지 스크래핑 — url={lyric_url!r}")
+
+    try:
+        page = requests.get(
+            lyric_url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            timeout=10,
+        )
+        print(f"[naver_music]   status_code={page.status_code}")
+        soup = BeautifulSoup(page.text, "html.parser")
+
+        selectors = [
+            ("div.wrap_lyrics", soup.find("div", class_="wrap_lyrics")),
+            ("p.ly",            soup.find("p", class_="ly")),
+            ("div#lyricText",   soup.find("div", id="lyricText")),
+            ("xmp",             soup.find("xmp")),
+        ]
+        for name, c in selectors:
+            preview = repr(c.get_text()[:80].strip()) if c else None
+            print(f"[naver_music]   selector={name!r} found={c is not None}, preview={preview}")
+
+        lyric_el = next((c for _, c in selectors if c), None)
+        if not lyric_el:
+            print(f"[naver_music]   가사 컨테이너 못 찾음, body 일부:")
+            print(page.text[2000:4000])
+            return None
+
+        lyrics = lyric_el.get_text(separator="\n").strip()
+        print(f"[naver_music] ✓ 가사 추출 완료 — {len(lyrics)}자")
+        return lyrics if lyrics else None
+    except Exception as e:
+        print(f"[naver_music] 스크래핑 실패: {e}")
+        return None
+
+
 def search_lyrics_naver(title: str, artist: str) -> str | None:
     """
-    Genius 실패 시 Naver 뮤직 검색 API로 가사 fallback.
-    1. Naver music search API → trackId 추출
-    2. music.naver.com 가사 페이지 스크래핑
+    Genius 실패 시 Naver fallback.
+    1. webkr 검색 → bugs.co.kr 트랙 링크 → 가사 스크래핑
+    2. bugs 링크 없으면 music.json API → music.naver.com 가사 스크래핑
     """
     import requests
     from bs4 import BeautifulSoup
@@ -823,8 +959,6 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
         print(f"[naver]   [{i}] title={raw_title!r}, link={item.get('link')!r}")
 
-    # bugs.co.kr/track/ 링크 선택 — title AND artist 모두 포함할 때만 통과
-    # artist명이 4자 이상이면 반드시 둘 다 매칭 필요 (짧은 일반 단어 곡명 오탐 방지)
     def _matches_query(item_title: str, title: str, artist: str) -> bool:
         normalized = item_title.lower()
         norm_title = re.sub(r"[^a-z0-9가-힣]", "", title.lower())
@@ -835,6 +969,7 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
             return title_match and artist_match
         return title_match
 
+    # 1단계: webkr 결과에서 bugs.co.kr 링크 탐색
     bugs_link = None
     for item in items:
         link = item.get("link", "")
@@ -847,46 +982,15 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
             else:
                 print(f"[naver]   벅스 링크 스킵 (곡 불일치): {raw_title!r}")
 
-    if not bugs_link:
-        print("[naver] 벅스 트랙 링크 없음 또는 일치하는 링크 없음, fallback 실패")
-        return None
+    if bugs_link:
+        print(f"[naver] ▶ 벅스 트랙 페이지 스크래핑 — url={bugs_link!r}")
+        lyrics = _scrape_bugs_lyrics(bugs_link)
+        if lyrics:
+            return lyrics
 
-    print(f"[naver] ▶ 벅스 트랙 페이지 스크래핑 — url={bugs_link!r}")
-
-    try:
-        page = requests.get(
-            bugs_link,
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
-            timeout=10,
-        )
-        print(f"[bugs]   status_code={page.status_code}")
-        soup = BeautifulSoup(page.text, "html.parser")
-
-        # 가사 컨테이너 후보 탐색 — 곡마다 구조가 다를 수 있어 선택자별 결과를 로그로 유지
-        selectors = [
-            ("div.lyrics",  soup.find("div", class_="lyrics")),
-            ("div#lyrics",  soup.find("div", id="lyrics")),
-            ("xmp",         soup.find("xmp")),
-            ("p.lyrics",    soup.find("p", class_="lyrics")),
-        ]
-        for name, c in selectors:
-            preview = repr(c.get_text()[:80].strip()) if c else None
-            print(f"[bugs]   selector={name!r} found={c is not None}, preview={preview}")
-
-        lyric_el = next((c for _, c in selectors if c), None)
-        if not lyric_el:
-            # 못 찾으면 HTML 일부 출력해서 구조 파악
-            print(f"[bugs]   가사 컨테이너 못 찾음, body 일부:")
-            print(page.text[2000:4000])
-            return None
-
-        lyrics = lyric_el.get_text(separator="\n").strip()
-        print(f"[bugs] ✓ 가사 추출 완료 — {len(lyrics)}자")
-        return lyrics if lyrics else None
-
-    except Exception as e:
-        print(f"[bugs] 스크래핑 실패: {e}")
-        return None
+    # 2단계: music.json API → music.naver.com
+    print("[naver] 벅스 링크 없음, Naver Music API fallback 시도")
+    return _search_naver_music_api(title, artist, client_id, client_secret)
 
 
 def filter_original_korean(results: list):
