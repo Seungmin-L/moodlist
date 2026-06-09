@@ -121,6 +121,9 @@ def clean_lyrics(raw_lyrics: str) -> str:
         return ""
 
     text = raw_lyrics
+    text = re.sub(r'^\d+ Contributors?\n', '', text)
+    text = re.sub(r'^Translations\n(?:[^\n]+\n)*', '', text)
+    text = re.sub(r'^.{1,100} Lyrics\n', '', text)
     text = re.sub(r'\d*Embed$', '', text)
     text = re.sub(r'\[.*?\]', '', text)
     text = re.sub(r'You might also like', '', text, flags=re.IGNORECASE)
