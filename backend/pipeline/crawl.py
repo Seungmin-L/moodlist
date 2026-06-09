@@ -738,19 +738,35 @@ def search_song(
 
 def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
     """
-    곡 ID 또는 URL로 가사 가져오기
+    곡 ID 또는 URL로 가사 가져오기 (data-lyrics-container 직접 스크래핑)
     Returns: str (가사) or None
     """
-    genius = get_genius_client(token)
-    
+    import requests
+    from bs4 import BeautifulSoup
+
+    if not song_url:
+        return None
+
     try:
-        if song_url:
-            lyrics = genius.lyrics(song_url=song_url)
-        elif song_id:
-            lyrics = genius.lyrics(song_id=song_id)
-        else:
+        resp = requests.get(
+            song_url,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            print(f"가사 가져오기 실패: HTTP {resp.status_code}")
             return None
-        return lyrics
+        soup = BeautifulSoup(resp.text, "html.parser")
+        containers = soup.find_all("div", attrs={"data-lyrics-container": "true"})
+        if not containers:
+            return None
+        parts = []
+        for container in containers:
+            for br in container.find_all("br"):
+                br.replace_with("\n")
+            parts.append(container.get_text(separator="\n"))
+        lyrics = "\n".join(parts).strip()
+        return lyrics if lyrics else None
     except Exception as e:
         print(f"가사 가져오기 실패: {e}")
         return None
@@ -797,18 +813,29 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
         print(f"[naver]   [{i}] title={raw_title!r}, link={item.get('link')!r}")
 
-    # bugs.co.kr/track/ 링크 우선 선택, 없으면 melon
+    # bugs.co.kr/track/ 링크 선택 — title/artist 키워드 포함 여부로 1차 검증
+    def _matches_query(item_title: str, title: str, artist: str) -> bool:
+        normalized = item_title.lower()
+        return (
+            title.lower() in normalized
+            or artist.lower() in normalized
+            or re.sub(r"[^a-z0-9가-힣]", "", title.lower()) in re.sub(r"[^a-z0-9가-힣]", "", normalized)
+        )
+
     bugs_link = None
     for item in items:
         link = item.get("link", "")
         raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
         if "music.bugs.co.kr/track/" in link:
-            bugs_link = link
-            print(f"[naver] ▶ 벅스 트랙 링크 선택: {bugs_link!r} (title={raw_title!r})")
-            break
+            if _matches_query(raw_title, title, artist):
+                bugs_link = link
+                print(f"[naver] ▶ 벅스 트랙 링크 선택: {bugs_link!r} (title={raw_title!r})")
+                break
+            else:
+                print(f"[naver]   벅스 링크 스킵 (곡 불일치): {raw_title!r}")
 
     if not bugs_link:
-        print("[naver] 벅스 트랙 링크 없음, fallback 실패")
+        print("[naver] 벅스 트랙 링크 없음 또는 일치하는 링크 없음, fallback 실패")
         return None
 
     print(f"[naver] ▶ 벅스 트랙 페이지 스크래핑 — url={bugs_link!r}")
