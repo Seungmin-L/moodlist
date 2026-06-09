@@ -750,7 +750,17 @@ def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
     try:
         resp = requests.get(
             song_url,
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Referer": "https://genius.com/",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin",
+                "Upgrade-Insecure-Requests": "1",
+            },
             timeout=10,
         )
         if resp.status_code != 200:
@@ -813,14 +823,17 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
         print(f"[naver]   [{i}] title={raw_title!r}, link={item.get('link')!r}")
 
-    # bugs.co.kr/track/ 링크 선택 — title/artist 키워드 포함 여부로 1차 검증
+    # bugs.co.kr/track/ 링크 선택 — title AND artist 모두 포함할 때만 통과
+    # artist명이 4자 이상이면 반드시 둘 다 매칭 필요 (짧은 일반 단어 곡명 오탐 방지)
     def _matches_query(item_title: str, title: str, artist: str) -> bool:
         normalized = item_title.lower()
-        return (
-            title.lower() in normalized
-            or artist.lower() in normalized
-            or re.sub(r"[^a-z0-9가-힣]", "", title.lower()) in re.sub(r"[^a-z0-9가-힣]", "", normalized)
-        )
+        norm_title = re.sub(r"[^a-z0-9가-힣]", "", title.lower())
+        norm_item = re.sub(r"[^a-z0-9가-힣]", "", normalized)
+        title_match = title.lower() in normalized or (norm_title and norm_title in norm_item)
+        artist_match = artist.lower() in normalized
+        if len(artist) >= 4:
+            return title_match and artist_match
+        return title_match
 
     bugs_link = None
     for item in items:
