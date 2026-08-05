@@ -66,6 +66,7 @@ class AddSongRequest(BaseModel):
     artist: str
     spotify_id: Optional[str] = None
     image_url: Optional[str] = None
+    isrc: Optional[str] = None
 
 class SpotifyImportRequest(BaseModel):
     playlist_url: str
@@ -94,7 +95,7 @@ async def add_song(req: AddSongRequest):
         from pipeline.classify import add_and_classify_by_id
         if req.spotify_id:
             result = await asyncio.to_thread(
-                add_and_classify_by_id, req.spotify_id, req.title, req.artist, image_url=req.image_url
+                add_and_classify_by_id, req.spotify_id, req.title, req.artist, image_url=req.image_url, isrc=req.isrc
             )
         else:
             result = await asyncio.to_thread(add_and_classify, req.title, req.artist)
@@ -289,7 +290,8 @@ async def spotify_import(req: SpotifyImportRequest):
                 result = await asyncio.to_thread(
                     add_and_classify_by_id,
                     track["id"], track["title"], track["artist"],
-                    image_url=track.get("image_url")
+                    image_url=track.get("image_url"),
+                    isrc=track.get("isrc"),
                 )
             else:
                 result = await asyncio.to_thread(add_and_classify, track["title"], track["artist"])

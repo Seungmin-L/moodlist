@@ -141,7 +141,7 @@ def get_playlist_tracks(playlist_url: str, use_oauth: bool = False) -> list:
             playlist_id,
             offset=offset,
             limit=limit,
-            fields="items(track(id,name,uri,artists(name),album(name,images))),total"
+            fields="items(track(id,name,uri,artists(name),album(name,images),external_ids)),total"
         )
         
         for item in results.get("items", []):
@@ -161,6 +161,7 @@ def get_playlist_tracks(playlist_url: str, use_oauth: bool = False) -> list:
                 "artist": artists,
                 "album": track.get("album", {}).get("name", ""),
                 "image_url": image_url,
+                "isrc": track.get("external_ids", {}).get("isrc"),
             })
         
         offset += limit
@@ -305,6 +306,7 @@ def search_track(title: str, artist: str = "") -> dict:
         "title": track["name"],
         "artist": artists,
         "image_url": image_url,
+        "isrc": track.get("external_ids", {}).get("isrc"),
     }
 
 

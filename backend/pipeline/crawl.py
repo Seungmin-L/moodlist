@@ -889,7 +889,38 @@ def _extract_korean_title(items: list, english_title: str, korean_artist: str) -
     return korean_title
 
 
-def search_lyrics_naver(title: str, artist: str) -> str | None:
+def _get_korean_title_by_isrc(isrc: str) -> str | None:
+    """MusicBrainz ISRC API로 한국어 제목 조회. aliases 중 locale='ko' 항목 반환."""
+    import requests
+
+    try:
+        resp = requests.get(
+            f"https://musicbrainz.org/ws/2/isrc/{isrc}",
+            params={"fmt": "json", "inc": "recordings+aliases"},
+            headers={"User-Agent": "moodlist/1.0 (tiana0618@gmail.com)"},
+            timeout=10,
+        )
+        if resp.status_code == 404:
+            print(f"[musicbrainz] ISRC {isrc!r} 등록 없음")
+            return None
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[musicbrainz] 조회 실패: {e}")
+        return None
+
+    for recording in data.get("recordings", []):
+        for alias in recording.get("aliases", []):
+            if alias.get("locale") == "ko":
+                korean_title = alias["name"]
+                print(f"[musicbrainz] ▶ 한국어 제목: {korean_title!r} (ISRC={isrc!r})")
+                return korean_title
+
+    print(f"[musicbrainz] ko locale alias 없음 (ISRC={isrc!r})")
+    return None
+
+
+def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str | None:
     """
     Genius 실패 시 Naver fallback.
     1. webkr 검색 → bugs.co.kr 트랙 링크 → 가사 스크래핑
@@ -959,7 +990,44 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         if lyrics:
             return lyrics
 
-    # 2단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
+    # 2단계: ISRC → MusicBrainz → 한국어 제목 획득 → bugs 재검색
+    if isrc:
+        print(f"[naver] ▶ ISRC 기반 한국어 제목 조회 — isrc={isrc!r}")
+        mb_korean_title = _get_korean_title_by_isrc(isrc)
+        if mb_korean_title:
+            korean_artist = _extract_korean_artist(items, artist)
+            search_artist = korean_artist or artist
+            query_mb = f"{mb_korean_title} {search_artist} 가사"
+            print(f"[naver] ▶ ISRC 한국어 제목으로 재검색 — query={query_mb!r}")
+            try:
+                resp_mb = requests.get(
+                    "https://openapi.naver.com/v1/search/webkr.json",
+                    params={"query": query_mb, "display": 5},
+                    headers={
+                        "X-Naver-Client-Id": client_id,
+                        "X-Naver-Client-Secret": client_secret,
+                    },
+                    timeout=10,
+                )
+                resp_mb.raise_for_status()
+                items_mb = resp_mb.json().get("items", [])
+            except Exception as e:
+                print(f"[naver] ISRC 재검색 실패: {e}")
+                items_mb = []
+
+            for item in items_mb:
+                link = item.get("link", "")
+                raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+                if "music.bugs.co.kr/track/" in link:
+                    if _matches_query(raw_title, mb_korean_title, search_artist):
+                        print(f"[naver] ▶ ISRC 경로 벅스 링크 선택: {link!r}")
+                        lyrics = _scrape_bugs_lyrics(link)
+                        if lyrics:
+                            return lyrics
+                    else:
+                        print(f"[naver]   ISRC 경로 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
+
+    # 3단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
     korean_artist = _extract_korean_artist(items, artist)
     if not korean_artist:
         print("[naver] 한글 아티스트명 추출 실패, fallback 중단")

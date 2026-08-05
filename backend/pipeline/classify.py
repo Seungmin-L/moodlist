@@ -300,7 +300,7 @@ def add_and_classify(title: str, artist: str) -> dict:
     }
 
 
-def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: str = None) -> dict:
+def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: str = None, isrc: str = None) -> dict:
     """
     Spotify ID가 확정된 곡 추가 + 분류 (Spotify 검색 스킵).
     유저가 suggestions에서 직접 선택한 경우 사용.
@@ -337,7 +337,7 @@ def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: 
 
     if not lyrics:
         print(f"[pipeline] ▶ Genius 실패, Naver fallback 시도 — title={title!r}, artist={artist!r}")
-        lyrics = search_lyrics_naver(title, artist)
+        lyrics = search_lyrics_naver(title, artist, isrc=isrc)
 
     if not lyrics:
         error_msg = f"Genius/Naver 모두 가사를 찾을 수 없음: {title} - {artist}"
