@@ -858,6 +858,37 @@ def _extract_korean_artist(items: list, english_artist: str) -> str | None:
     return korean_name
 
 
+def _extract_korean_title(items: list, english_title: str, korean_artist: str) -> str | None:
+    """webkr 결과에서 한글 제목 추출.
+    패턴 1: "한글제목 (영문제목)" — 영문 제목이 괄호 안에 있는 경우
+    패턴 2: "한글아티스트 - 한글제목" — 아티스트명 뒤 제목
+    """
+    from collections import Counter
+
+    candidates = []
+    for item in items:
+        combined = re.sub(r"<[^>]+>", "", item.get("title", "") + " " + item.get("description", ""))
+
+        p1 = rf'([가-힣]{{2,}}(?:\s[가-힣]+)*)\s*\({re.escape(english_title)}\)'
+        m = re.search(p1, combined, re.IGNORECASE)
+        if m:
+            candidates.append(m.group(1).strip())
+            continue
+
+        if korean_artist:
+            p2 = rf'{re.escape(korean_artist)}\s*(?:\([^)]*\))?\s*[-–]\s*([가-힣]{{2,}}(?:\s[가-힣]+)*)'
+            m = re.search(p2, combined)
+            if m:
+                candidates.append(m.group(1).strip())
+
+    if not candidates:
+        return None
+
+    korean_title = Counter(candidates).most_common(1)[0][0]
+    print(f"[naver] ▶ 한글 제목 추출: {english_title!r} → {korean_title!r}")
+    return korean_title
+
+
 def search_lyrics_naver(title: str, artist: str) -> str | None:
     """
     Genius 실패 시 Naver fallback.
@@ -928,13 +959,15 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         if lyrics:
             return lyrics
 
-    # 2단계: webkr 결과에서 한글 아티스트명 추출 → 한글명으로 재검색
+    # 2단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
     korean_artist = _extract_korean_artist(items, artist)
     if not korean_artist:
         print("[naver] 한글 아티스트명 추출 실패, fallback 중단")
         return None
 
-    query2 = f"{title} {korean_artist} 가사"
+    korean_title = _extract_korean_title(items, title, korean_artist)
+    search_title = korean_title or title
+    query2 = f"{search_title} {korean_artist} 가사"
     print(f"[naver] ▶ 한글명으로 재검색 — query={query2!r}")
 
     try:
@@ -962,7 +995,7 @@ def search_lyrics_naver(title: str, artist: str) -> str | None:
         link = item.get("link", "")
         raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
         if "music.bugs.co.kr/track/" in link:
-            if _matches_query(raw_title, title, korean_artist):
+            if _matches_query(raw_title, search_title, korean_artist):
                 print(f"[naver] ▶ 재검색 벅스 링크 선택: {link!r} (title={raw_title!r})")
                 lyrics = _scrape_bugs_lyrics(link)
                 if lyrics:
