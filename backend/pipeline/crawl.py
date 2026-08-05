@@ -837,11 +837,18 @@ def _extract_korean_artist(items: list, english_artist: str) -> str | None:
         # 영문 아티스트명이 포함된 결과에서만 추출
         if norm_english not in re.sub(r"[^a-z]", "", combined.lower()):
             continue
-        # "[한글]{2,6} [영문아티스트]" 패턴에서 한글명 추출
-        pattern = rf'([가-힣]{{2,6}})\s+{re.escape(english_artist)}'
-        match = re.search(pattern, combined, re.IGNORECASE)
-        if match:
-            candidates.append(match.group(1))
+        # 한글명 추출 패턴 (3가지)
+        # "안희수 Ahn Heesu" / "이영훈 (Lee Young Hoon)" / "Ahn Heesu (안희수)"
+        patterns = [
+            rf'([가-힣]{{2,6}})\s+{re.escape(english_artist)}',
+            rf'([가-힣]{{2,6}})\s*\({re.escape(english_artist)}\)',
+            rf'{re.escape(english_artist)}\s*\(([가-힣]{{2,6}})\)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, combined, re.IGNORECASE)
+            if match:
+                candidates.append(match.group(1))
+                break
 
     if not candidates:
         return None
