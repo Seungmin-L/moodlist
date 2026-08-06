@@ -797,10 +797,11 @@ def _scrape_bugs_lyrics(url: str) -> str | None:
         soup = BeautifulSoup(page.text, "html.parser")
 
         selectors = [
-            ("div.lyrics", soup.find("div", class_="lyrics")),
-            ("div#lyrics", soup.find("div", id="lyrics")),
-            ("xmp",        soup.find("xmp")),
-            ("p.lyrics",   soup.find("p", class_="lyrics")),
+            ("div.lyricsContainer", soup.find("div", class_="lyricsContainer")),
+            ("div.lyrics",          soup.find("div", class_="lyrics")),
+            ("div#lyrics",          soup.find("div", id="lyrics")),
+            ("xmp",                 soup.find("xmp")),
+            ("p.lyrics",            soup.find("p", class_="lyrics")),
         ]
         for name, c in selectors:
             preview = repr(c.get_text()[:80].strip()) if c else None
@@ -1030,13 +1031,17 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
             link = item.get("link", "")
             raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
             if "music.bugs.co.kr/track/" in link:
-                if _matches_query(raw_title, itunes_korean_title, search_artist):
+                # iTunes가 이미 확정한 한국어 제목이므로 제목 일치만 확인
+                # 아티스트명은 영문↔한국어 변환 불일치가 있어 체크 제외
+                norm_ko_title = re.sub(r"[^가-힣a-z0-9]", "", itunes_korean_title.lower())
+                norm_raw = re.sub(r"[^가-힣a-z0-9]", "", raw_title.lower())
+                if norm_ko_title and norm_ko_title in norm_raw:
                     print(f"[naver] ▶ iTunes 경로 벅스 링크 선택: {link!r}")
                     lyrics = _scrape_bugs_lyrics(link)
                     if lyrics:
                         return lyrics
                 else:
-                    print(f"[naver]   iTunes 경로 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
+                    print(f"[naver]   iTunes 경로 벅스 링크 스킵 (제목 불일치): {raw_title!r}")
 
     # 3단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
     korean_artist = _extract_korean_artist(items, artist)
