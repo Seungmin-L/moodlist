@@ -782,6 +782,58 @@ def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
         return None
 
 
+def _search_bugs_direct(korean_title: str, korean_artist: str) -> str | None:
+    """
+    bugs 검색 페이지를 직접 스크래핑해서 한국어 제목+아티스트로 트랙을 찾고 가사 반환.
+    webkr 인덱싱에 없는 곡도 커버.
+    """
+    import requests
+    from bs4 import BeautifulSoup
+
+    query = f"{korean_title} {korean_artist}".strip()
+    url = f"https://music.bugs.co.kr/search/track?q={requests.utils.quote(query)}"
+    print(f"[bugs-direct] 검색 — query={query!r}")
+
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+                "Accept-Language": "ko-KR,ko;q=0.9",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+    except Exception as e:
+        print(f"[bugs-direct] 검색 실패: {e}")
+        return None
+
+    norm_title = re.sub(r"[^가-힣a-z0-9]", "", korean_title.lower())
+
+    for row in soup.select("table.trackList tbody tr"):
+        title_el = row.select_one("p.title a")
+        if not title_el:
+            continue
+        row_title = title_el.text.strip()
+        norm_row = re.sub(r"[^가-힣a-z0-9]", "", row_title.lower())
+        if norm_title and norm_title in norm_row:
+            # tr[trackid] 속성에서 트랙 ID 추출
+            track_id = row.get("trackid")
+            if not track_id:
+                m = re.search(r"listen\('?(\d+)", title_el.get("onclick", ""))
+                track_id = m.group(1) if m else None
+            if not track_id:
+                print(f"[bugs-direct] 트랙 ID 추출 실패: {row_title!r}")
+                continue
+            track_link = f"https://music.bugs.co.kr/track/{track_id}"
+            print(f"[bugs-direct] ▶ 트랙 선택: {row_title!r} → {track_link!r}")
+            return _scrape_bugs_lyrics(track_link)
+
+    print(f"[bugs-direct] 제목 일치 결과 없음 — {korean_title!r}")
+    return None
+
+
 def _scrape_bugs_lyrics(url: str) -> str | None:
     """bugs.co.kr 트랙 페이지에서 가사 스크래핑"""
     import requests
@@ -890,10 +942,10 @@ def _extract_korean_title(items: list, english_title: str, korean_artist: str) -
     return korean_title
 
 
-def _get_korean_title_itunes(title: str, artist: str) -> str | None:
+def _get_korean_title_itunes(title: str, artist: str) -> tuple[str, str] | tuple[None, None]:
     """
-    iTunes Search API (country=KR)로 한국어 제목 조회.
-    영문 제목+아티스트명으로 검색, 첫 번째 결과의 trackName 반환.
+    iTunes Search API (country=KR)로 한국어 제목+아티스트명 조회.
+    반환: (trackName, artistName) 또는 (None, None)
     """
     import requests
 
@@ -913,23 +965,24 @@ def _get_korean_title_itunes(title: str, artist: str) -> str | None:
         results = resp.json().get("results", [])
     except Exception as e:
         print(f"[itunes] 조회 실패: {e}")
-        return None
+        return None, None
 
     if not results:
         print(f"[itunes] 결과 없음 — title={title!r}, artist={artist!r}")
-        return None
+        return None, None
 
     # 첫 번째로 한글 제목인 결과 채택
     # 아티스트 체크를 하지 않는 이유: 영문 아티스트명(Shin In Ryu)으로 검색하면
     # iTunes가 한국어 아티스트명(신인류)으로 반환해서 일치 비교가 불가능
     for track in results:
         track_name = track.get("trackName", "")
+        artist_name = track.get("artistName", "")
         if re.search(r"[가-힣]", track_name):
-            print(f"[itunes] ▶ 한국어 제목: {track_name!r} (검색={title!r})")
-            return track_name
+            print(f"[itunes] ▶ 한국어 제목: {track_name!r}, 아티스트: {artist_name!r} (검색={title!r})")
+            return track_name, artist_name
 
     print(f"[itunes] 한국어 제목 없음 — title={title!r}, artist={artist!r}")
-    return None
+    return None, None
 
 
 def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str | None:
@@ -1003,12 +1056,13 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
         if lyrics:
             return lyrics
 
-    # 2단계: iTunes KR → 한국어 제목 획득 → bugs 재검색
+    # 2단계: iTunes KR → 한국어 제목+아티스트 획득 → bugs 재검색
     print(f"[naver] ▶ iTunes KR 한국어 제목 조회 — title={title!r}, artist={artist!r}")
-    itunes_korean_title = _get_korean_title_itunes(title, artist)
+    itunes_korean_title, itunes_korean_artist = _get_korean_title_itunes(title, artist)
     if itunes_korean_title:
+        # iTunes 아티스트명 우선, 없으면 webkr 추출, 그것도 없으면 영문 원본
         korean_artist = _extract_korean_artist(items, artist)
-        search_artist = korean_artist or artist
+        search_artist = korean_artist or itunes_korean_artist or artist
         query_itunes = f"{itunes_korean_title} {search_artist} 가사"
         print(f"[naver] ▶ iTunes 한국어 제목으로 재검색 — query={query_itunes!r}")
         try:
@@ -1027,21 +1081,51 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
             print(f"[naver] iTunes 재검색 실패: {e}")
             items_it = []
 
-        for item in items_it:
-            link = item.get("link", "")
-            raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
-            if "music.bugs.co.kr/track/" in link:
-                # iTunes가 이미 확정한 한국어 제목이므로 제목 일치만 확인
-                # 아티스트명은 영문↔한국어 변환 불일치가 있어 체크 제외
-                norm_ko_title = re.sub(r"[^가-힣a-z0-9]", "", itunes_korean_title.lower())
-                norm_raw = re.sub(r"[^가-힣a-z0-9]", "", raw_title.lower())
-                if norm_ko_title and norm_ko_title in norm_raw:
-                    print(f"[naver] ▶ iTunes 경로 벅스 링크 선택: {link!r}")
-                    lyrics = _scrape_bugs_lyrics(link)
-                    if lyrics:
-                        return lyrics
-                else:
-                    print(f"[naver]   iTunes 경로 벅스 링크 스킵 (제목 불일치): {raw_title!r}")
+        def _pick_bugs_by_title(items_list: list, ko_title: str) -> str | None:
+            norm_ko = re.sub(r"[^가-힣a-z0-9]", "", ko_title.lower())
+            for it in items_list:
+                lnk = it.get("link", "")
+                rt = re.sub(r"<[^>]+>", "", it.get("title", ""))
+                if "music.bugs.co.kr/track/" in lnk:
+                    norm_rt = re.sub(r"[^가-힣a-z0-9]", "", rt.lower())
+                    if norm_ko and norm_ko in norm_rt:
+                        print(f"[naver] ▶ iTunes 경로 벅스 링크 선택: {lnk!r}")
+                        return _scrape_bugs_lyrics(lnk)
+                    print(f"[naver]   iTunes 경로 벅스 링크 스킵 (제목 불일치): {rt!r}")
+            return None
+
+        lyrics = _pick_bugs_by_title(items_it, itunes_korean_title)
+        if lyrics:
+            return lyrics
+
+        # search_artist가 영문인 경우(iTunes도 영문 아티스트 반환) 한국어 제목만으로 재시도
+        if not re.search(r"[가-힣]", search_artist):
+            query_title_only = f"{itunes_korean_title} 가사"
+            print(f"[naver] ▶ iTunes 한국어 제목만으로 재검색 — query={query_title_only!r}")
+            try:
+                resp_to = requests.get(
+                    "https://openapi.naver.com/v1/search/webkr.json",
+                    params={"query": query_title_only, "display": 5},
+                    headers={
+                        "X-Naver-Client-Id": client_id,
+                        "X-Naver-Client-Secret": client_secret,
+                    },
+                    timeout=10,
+                )
+                resp_to.raise_for_status()
+                items_to = resp_to.json().get("items", [])
+            except Exception as e:
+                print(f"[naver] iTunes 제목만 재검색 실패: {e}")
+                items_to = []
+
+            lyrics = _pick_bugs_by_title(items_to, itunes_korean_title)
+            if lyrics:
+                return lyrics
+
+        # webkr에서 bugs 링크를 못 찾은 경우 bugs 직접 검색
+        lyrics = _search_bugs_direct(itunes_korean_title, search_artist)
+        if lyrics:
+            return lyrics
 
     # 3단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
     korean_artist = _extract_korean_artist(items, artist)
