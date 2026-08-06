@@ -889,34 +889,45 @@ def _extract_korean_title(items: list, english_title: str, korean_artist: str) -
     return korean_title
 
 
-def _get_korean_title_by_isrc(isrc: str) -> str | None:
-    """MusicBrainz ISRC API로 한국어 제목 조회. aliases 중 locale='ko' 항목 반환."""
+def _get_korean_title_itunes(title: str, artist: str) -> str | None:
+    """
+    iTunes Search API (country=KR)로 한국어 제목 조회.
+    영문 제목+아티스트명으로 검색, 첫 번째 결과의 trackName 반환.
+    """
     import requests
 
     try:
         resp = requests.get(
-            f"https://musicbrainz.org/ws/2/isrc/{isrc}",
-            params={"fmt": "json", "inc": "recordings+aliases"},
-            headers={"User-Agent": "moodlist/1.0 (tiana0618@gmail.com)"},
+            "https://itunes.apple.com/search",
+            params={
+                "term": f"{artist} {title}",
+                "country": "KR",
+                "media": "music",
+                "entity": "song",
+                "limit": 5,
+            },
             timeout=10,
         )
-        if resp.status_code == 404:
-            print(f"[musicbrainz] ISRC {isrc!r} 등록 없음")
-            return None
         resp.raise_for_status()
-        data = resp.json()
+        results = resp.json().get("results", [])
     except Exception as e:
-        print(f"[musicbrainz] 조회 실패: {e}")
+        print(f"[itunes] 조회 실패: {e}")
         return None
 
-    for recording in data.get("recordings", []):
-        for alias in recording.get("aliases", []):
-            if alias.get("locale") == "ko":
-                korean_title = alias["name"]
-                print(f"[musicbrainz] ▶ 한국어 제목: {korean_title!r} (ISRC={isrc!r})")
-                return korean_title
+    if not results:
+        print(f"[itunes] 결과 없음 — title={title!r}, artist={artist!r}")
+        return None
 
-    print(f"[musicbrainz] ko locale alias 없음 (ISRC={isrc!r})")
+    # 첫 번째로 한글 제목인 결과 채택
+    # 아티스트 체크를 하지 않는 이유: 영문 아티스트명(Shin In Ryu)으로 검색하면
+    # iTunes가 한국어 아티스트명(신인류)으로 반환해서 일치 비교가 불가능
+    for track in results:
+        track_name = track.get("trackName", "")
+        if re.search(r"[가-힣]", track_name):
+            print(f"[itunes] ▶ 한국어 제목: {track_name!r} (검색={title!r})")
+            return track_name
+
+    print(f"[itunes] 한국어 제목 없음 — title={title!r}, artist={artist!r}")
     return None
 
 
@@ -924,7 +935,8 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
     """
     Genius 실패 시 Naver fallback.
     1. webkr 검색 → bugs.co.kr 트랙 링크 → 가사 스크래핑
-    2. bugs 링크 없으면 music.json API → music.naver.com 가사 스크래핑
+    2. iTunes KR → 한국어 제목 획득 → bugs 재검색
+    3. webkr 결과에서 한글명 추출 → bugs 재검색
     """
     import requests
     from bs4 import BeautifulSoup
@@ -990,42 +1002,41 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
         if lyrics:
             return lyrics
 
-    # 2단계: ISRC → MusicBrainz → 한국어 제목 획득 → bugs 재검색
-    if isrc:
-        print(f"[naver] ▶ ISRC 기반 한국어 제목 조회 — isrc={isrc!r}")
-        mb_korean_title = _get_korean_title_by_isrc(isrc)
-        if mb_korean_title:
-            korean_artist = _extract_korean_artist(items, artist)
-            search_artist = korean_artist or artist
-            query_mb = f"{mb_korean_title} {search_artist} 가사"
-            print(f"[naver] ▶ ISRC 한국어 제목으로 재검색 — query={query_mb!r}")
-            try:
-                resp_mb = requests.get(
-                    "https://openapi.naver.com/v1/search/webkr.json",
-                    params={"query": query_mb, "display": 5},
-                    headers={
-                        "X-Naver-Client-Id": client_id,
-                        "X-Naver-Client-Secret": client_secret,
-                    },
-                    timeout=10,
-                )
-                resp_mb.raise_for_status()
-                items_mb = resp_mb.json().get("items", [])
-            except Exception as e:
-                print(f"[naver] ISRC 재검색 실패: {e}")
-                items_mb = []
+    # 2단계: iTunes KR → 한국어 제목 획득 → bugs 재검색
+    print(f"[naver] ▶ iTunes KR 한국어 제목 조회 — title={title!r}, artist={artist!r}")
+    itunes_korean_title = _get_korean_title_itunes(title, artist)
+    if itunes_korean_title:
+        korean_artist = _extract_korean_artist(items, artist)
+        search_artist = korean_artist or artist
+        query_itunes = f"{itunes_korean_title} {search_artist} 가사"
+        print(f"[naver] ▶ iTunes 한국어 제목으로 재검색 — query={query_itunes!r}")
+        try:
+            resp_it = requests.get(
+                "https://openapi.naver.com/v1/search/webkr.json",
+                params={"query": query_itunes, "display": 5},
+                headers={
+                    "X-Naver-Client-Id": client_id,
+                    "X-Naver-Client-Secret": client_secret,
+                },
+                timeout=10,
+            )
+            resp_it.raise_for_status()
+            items_it = resp_it.json().get("items", [])
+        except Exception as e:
+            print(f"[naver] iTunes 재검색 실패: {e}")
+            items_it = []
 
-            for item in items_mb:
-                link = item.get("link", "")
-                raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
-                if "music.bugs.co.kr/track/" in link:
-                    if _matches_query(raw_title, mb_korean_title, search_artist):
-                        print(f"[naver] ▶ ISRC 경로 벅스 링크 선택: {link!r}")
-                        lyrics = _scrape_bugs_lyrics(link)
-                        if lyrics:
-                            return lyrics
-                    else:
-                        print(f"[naver]   ISRC 경로 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
+        for item in items_it:
+            link = item.get("link", "")
+            raw_title = re.sub(r"<[^>]+>", "", item.get("title", ""))
+            if "music.bugs.co.kr/track/" in link:
+                if _matches_query(raw_title, itunes_korean_title, search_artist):
+                    print(f"[naver] ▶ iTunes 경로 벅스 링크 선택: {link!r}")
+                    lyrics = _scrape_bugs_lyrics(link)
+                    if lyrics:
+                        return lyrics
+                else:
+                    print(f"[naver]   iTunes 경로 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
 
     # 3단계: webkr 결과에서 한글 아티스트명/제목 추출 → 한글명으로 재검색
     korean_artist = _extract_korean_artist(items, artist)
