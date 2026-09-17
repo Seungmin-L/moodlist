@@ -32,6 +32,7 @@ from db.database import (
 )
 from pipeline.crawl import search_song_with_diagnostics, filter_original_korean, get_lyrics, search_lyrics_naver
 from pipeline.spotify import search_track
+from pipeline.landing import write_landing_record
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = "gpt-4o-mini"
@@ -310,7 +311,13 @@ def add_and_classify(title: str, artist: str) -> dict:
         update_classification(spotify_id, error=error_msg)
         raise ValueError(error_msg)
 
-    # 4. 가사 저장 후 분류
+    # 4. 원본 적재 후 정제/분류
+    # classify_song이 정제본으로 lyrics 컬럼을 덮어쓰므로 원본은 랜딩존에만 남는다.
+    write_landing_record(
+        spotify_id, en_title, en_artist, lyrics,
+        source="genius", source_url=filtered[0].get("url"),
+        isrc=spotify_result.get("isrc"),
+    )
     update_lyrics(spotify_id, lyrics)
     classification = classify_song(spotify_id)
 
@@ -353,15 +360,24 @@ def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: 
         print(f"[pipeline]   [{i}] title={r.get('title')!r}, artist={r.get('artist')!r}")
 
     lyrics = None
+    lyrics_source = None
+    lyrics_url = None
 
     if filtered:
         print(f"[pipeline] ▶ 가사 크롤링 — url={filtered[0]['url']!r}")
         lyrics = get_lyrics(song_url=filtered[0]["url"])
         print(f"[pipeline]   가사 길이: {len(lyrics) if lyrics else 0}자")
+        if lyrics:
+            lyrics_source = "genius"
+            lyrics_url = filtered[0]["url"]
 
     if not lyrics:
         print(f"[pipeline] ▶ Genius 실패, Naver fallback 시도 — title={title!r}, artist={artist!r}")
         lyrics = search_lyrics_naver(title, artist, isrc=isrc)
+        if lyrics:
+            # search_lyrics_naver는 내부에서 naver/itunes/bugs 경로를 오가지만
+            # 반환값이 문자열뿐이라 이 층에서는 세부 출처를 구분할 수 없다.
+            lyrics_source = "naver_fallback"
 
     if not lyrics:
         error_msg = f"Genius/Naver 모두 가사를 찾을 수 없음: {title} - {artist}"
@@ -369,6 +385,10 @@ def add_and_classify_by_id(spotify_id: str, title: str, artist: str, image_url: 
         update_classification(spotify_id, error=error_msg)
         raise ValueError(error_msg)
 
+    write_landing_record(
+        spotify_id, title, artist, lyrics,
+        source=lyrics_source or "unknown", source_url=lyrics_url, isrc=isrc,
+    )
     update_lyrics(spotify_id, lyrics)
     print(f"[pipeline] ▶ LLM 분류 시작")
     classification = classify_song(spotify_id)
