@@ -126,7 +126,11 @@ def clean_lyrics(raw_lyrics: str) -> str:
     text = re.sub(r'^Translations\n(?:[^\n]+\n)*', '', text)
     text = re.sub(r'^.{1,100} Lyrics\n', '', text)
     text = re.sub(r'\d*Embed$', '', text)
-    text = re.sub(r'\[.*?\]', '', text)
+    # DOTALL 필수. Genius는 파트 표기를 여러 줄에 걸쳐 쓴다.
+    #   [Verse 1: Joochan,\nJaehyun\n,\nDonghyun\n]
+    # `.`이 줄바꿈에 매칭되지 않으면 이런 블록이 통째로 살아남아
+    # 멤버 이름과 파트 라벨이 가사로 LLM에 들어간다.
+    text = re.sub(r'\[.*?\]', '', text, flags=re.DOTALL)
     text = re.sub(r'You might also like', '', text, flags=re.IGNORECASE)
     text = re.sub(r'See .+ Live.*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'Get tickets as low as \$\d+', '', text, flags=re.IGNORECASE)

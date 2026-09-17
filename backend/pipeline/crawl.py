@@ -772,9 +772,24 @@ def get_lyrics(song_id: int = None, song_url: str = None, token: str = None):
             return None
         parts = []
         for container in containers:
+            # 헤더(기여자 수·번역 목록·곡 제목)는 DOM 단계에서 걷어낸다.
+            # 정규식으로 뒤늦게 지우면 줄바꿈 유무에 의존하게 된다.
+            for el in container.select(
+                '[class*="LyricsHeader"], [class*="Dropdown__"], '
+                '[class*="ContributorsCredit"], [data-exclude-from-selection="true"]'
+            ):
+                el.decompose()
+
             for br in container.find_all("br"):
                 br.replace_with("\n")
-            parts.append(container.get_text(separator="\n"))
+
+            # separator를 주면 안 된다. get_text(separator="\n")는 텍스트 노드마다,
+            # 즉 인라인 <a>(파트별 보컬 표기) 경계마다 줄바꿈을 넣는다. 그 결과
+            #   I'm not a <a>bad boy</a>  ->  "I'm not a\nbad boy"
+            #   (<a>Ah</a>)               ->  "(\nAh\n)"
+            # 처럼 한 구절이 쪼개지고 괄호가 여러 줄에 걸친다.
+            # 진짜 줄바꿈은 위에서 <br>을 \n으로 바꾸며 이미 확보했다.
+            parts.append(container.get_text())
         lyrics = "\n".join(parts).strip()
         return lyrics if lyrics else None
     except Exception as e:
