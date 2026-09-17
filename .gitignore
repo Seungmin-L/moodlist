@@ -23,3 +23,8 @@ env/
 /docs
 /backend/scripts
 /data/landing/
+/data/warehouse/
+/_workspace/2026-09-17-001
+PYSPARK_MEDALLION.md
+CLAUDE.md
+everything-claude-code/
