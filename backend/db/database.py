@@ -73,14 +73,21 @@ def init_db():
             lyrics          CLOB,
             source_url      VARCHAR2(1000),
             category        VARCHAR2(100),
+            sub_category    VARCHAR2(100),
             mood            VARCHAR2(500),
             mood_embedding  VECTOR(1536, FLOAT64),
+            emotion_vector  VECTOR(20, FLOAT64),
             emotions        CLOB,
             primary_emotion VARCHAR2(100),
             emotional_arc   VARCHAR2(200),
             tags            CLOB,
             narrative       CLOB,
             confidence      NUMBER(3,2),
+            valence         NUMBER(4,3),
+            energy          NUMBER(4,3),
+            danceability    NUMBER(4,3),
+            tempo           NUMBER(6,2),
+            acousticness    NUMBER(4,3),
             status          VARCHAR2(20)   DEFAULT 'pending',
             error_message   CLOB,
             album_art_url   VARCHAR2(1000),
@@ -179,6 +186,9 @@ def update_classification(spotify_id: str, result: dict = None, error: str = Non
         embedding = result.get("mood_embedding") or []
         oracle_vector = array.array('d', embedding) if embedding else None
 
+        emotion = result.get("emotion_vector") or []
+        oracle_emotion = array.array('d', emotion) if emotion else None
+
         cursor.execute("""
             UPDATE songs SET
                 category        = :1,
@@ -191,10 +201,11 @@ def update_classification(spotify_id: str, result: dict = None, error: str = Non
                 tags            = :8,
                 narrative       = :9,
                 confidence      = :10,
+                emotion_vector  = :11,
                 status          = 'classified',
                 error_message   = NULL,
                 classified_at   = CURRENT_TIMESTAMP
-            WHERE spotify_id = :11
+            WHERE spotify_id = :12
         """, [
             result.get("category", "기타"),
             result.get("sub_category", ""),
@@ -206,6 +217,7 @@ def update_classification(spotify_id: str, result: dict = None, error: str = Non
             json.dumps(result.get("tags", []), ensure_ascii=False),
             result.get("narrative", ""),
             result.get("confidence", 0.0),
+            oracle_emotion,
             spotify_id
         ])
 
@@ -334,9 +346,16 @@ def find_similar_songs(spotify_id: str, top_k: int = 10) -> list:
         scored = []
         for r in rows:
             d = dict(zip(cols, r))
-            emb_d = d.pop("emb_dist", 1.0) or 1.0
-            emo_d = d.pop("emo_dist", 1.0) or 1.0
-            d["similarity"] = 0.6 * emb_d + 0.4 * emo_d
+            emb_d = d.pop("emb_dist", None)
+            emo_d = d.pop("emo_dist", None)
+            if emb_d is None:
+                continue
+            # 감정 벡터가 없으면 페널티 대신 텍스트 축 단독으로 평가한다.
+            # NULL을 최대 거리(1.0)로 치환하면 결측 곡이 구조적으로 밀려난다.
+            if emo_d is None:
+                d["similarity"] = emb_d
+            else:
+                d["similarity"] = 0.6 * emb_d + 0.4 * emo_d
             scored.append(d)
         scored.sort(key=lambda x: x["similarity"])
         result = scored[:top_k]

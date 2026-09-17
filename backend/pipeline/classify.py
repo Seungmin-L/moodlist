@@ -213,6 +213,29 @@ def get_mood_embedding(mood: str, result: dict = None) -> list:
     return response.data[0].embedding
 
 
+STANDARD_EMOTIONS = [
+    "그리움", "슬픔", "미련", "체념", "분노", "후련함", "자신감", "결단",
+    "설렘", "사랑", "불안", "혼란", "상실감", "행복", "기대", "상처",
+    "외로움", "실망", "갈망", "안타까움",
+]
+
+
+def emotions_to_vector(emotions: dict) -> list[float]:
+    """emotions dict → 20차원 표준 감정 벡터.
+
+    표준 사전에 없는 감정명은 무시한다.
+    매칭이 하나도 없으면 빈 리스트를 반환한다. 영벡터는 노름이 0이라
+    코사인 거리를 정의할 수 없으므로 저장하지 않는다.
+    """
+    vec = [0.0] * len(STANDARD_EMOTIONS)
+    matched = False
+    for name, score in (emotions or {}).items():
+        if name in STANDARD_EMOTIONS:
+            vec[STANDARD_EMOTIONS.index(name)] = float(score)
+            matched = True
+    return vec if matched else []
+
+
 # ======================
 # 파이프라인
 # ======================
@@ -235,6 +258,7 @@ def classify_song(spotify_id: str) -> dict:
 
     result = classify_lyrics(lyrics, song["title"], song["artist"])
     result["mood_embedding"] = get_mood_embedding(result.get("mood", ""), result)
+    result["emotion_vector"] = emotions_to_vector(result.get("emotions", {}))
 
     update_classification(spotify_id, result=result)
 
