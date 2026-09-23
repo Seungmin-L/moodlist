@@ -823,35 +823,70 @@ def _search_bugs_direct(korean_title: str, korean_artist: str) -> str | None:
     import requests
     from bs4 import BeautifulSoup
 
-    query = f"{korean_title} {korean_artist}".strip()
-    url = f"https://music.bugs.co.kr/search/track?q={requests.utils.quote(query)}"
-    print(f"[bugs-direct] 검색 — query={query!r}")
+    def _compact(value: str) -> str:
+        return re.sub(r"[^가-힣a-z0-9]", "", (value or "").lower())
 
-    try:
-        resp = requests.get(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-                "Accept-Language": "ko-KR,ko;q=0.9",
-            },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-    except Exception as e:
-        print(f"[bugs-direct] 검색 실패: {e}")
-        return None
+    # 검색어 전략.
+    # 결합 검색어는 정밀하지만 제목과 아티스트의 표기 언어가 어긋나면 0건이 된다.
+    #   'Ping 크르르'  -> 0행
+    #   '크르르'       -> 39행 (그 안에 '핑' 존재)
+    # 그래서 결합으로 먼저 찾고, 실패하면 아티스트 단독으로 카탈로그를 받아 훑는다.
+    # 아티스트 단독 검색은 동명 제목의 다른 가수 곡을 집을 수 있으므로 행의 아티스트를 검증한다.
+    strategies = []
+    combined = f"{korean_title} {korean_artist}".strip()
+    if combined:
+        strategies.append((combined, False))
+    if korean_artist and korean_artist.strip() != combined:
+        strategies.append((korean_artist.strip(), True))
 
-    norm_title = re.sub(r"[^가-힣a-z0-9]", "", korean_title.lower())
+    norm_title = _compact(korean_title)
+    norm_artist = _compact(korean_artist)
 
-    for row in soup.select("table.trackList tbody tr"):
-        title_el = row.select_one("p.title a")
-        if not title_el:
+    for query, verify_artist in strategies:
+        url = f"https://music.bugs.co.kr/search/track?q={requests.utils.quote(query)}"
+        print(f"[bugs-direct] 검색 — query={query!r} (아티스트 검증={verify_artist})")
+
+        try:
+            resp = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+                    "Accept-Language": "ko-KR,ko;q=0.9",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+        except Exception as e:
+            print(f"[bugs-direct] 검색 실패: {e}")
             continue
-        row_title = title_el.text.strip()
-        norm_row = re.sub(r"[^가-힣a-z0-9]", "", row_title.lower())
-        if norm_title and norm_title in norm_row:
-            # tr[trackid] 속성에서 트랙 ID 추출
+
+        rows = soup.select("table.trackList tbody tr")
+        print(f"[bugs-direct]   결과 {len(rows)}행")
+
+        for row in rows:
+            title_el = row.select_one("p.title a")
+            if not title_el:
+                continue
+            row_title = title_el.text.strip()
+            norm_row = _compact(row_title)
+
+            # 제목은 양방향으로 본다. 벅스가 '핑 (Ping)'처럼 병기하거나
+            # 반대로 더 짧게 등록한 경우를 모두 잡기 위해서다.
+            if not norm_title or not norm_row:
+                continue
+            if norm_title not in norm_row and norm_row not in norm_title:
+                continue
+
+            if verify_artist:
+                artist_el = row.select_one("p.artist a")
+                row_artist = _compact(artist_el.text if artist_el else "")
+                if not row_artist or (
+                    norm_artist not in row_artist and row_artist not in norm_artist
+                ):
+                    print(f"[bugs-direct]   아티스트 불일치로 스킵: {row_title!r} / {artist_el.text.strip() if artist_el else '?'!r}")
+                    continue
+
             track_id = row.get("trackid")
             if not track_id:
                 m = re.search(r"listen\('?(\d+)", title_el.get("onclick", ""))
@@ -859,9 +894,12 @@ def _search_bugs_direct(korean_title: str, korean_artist: str) -> str | None:
             if not track_id:
                 print(f"[bugs-direct] 트랙 ID 추출 실패: {row_title!r}")
                 continue
+
             track_link = f"https://music.bugs.co.kr/track/{track_id}"
             print(f"[bugs-direct] ▶ 트랙 선택: {row_title!r} → {track_link!r}")
-            return _scrape_bugs_lyrics(track_link)
+            lyrics = _scrape_bugs_lyrics(track_link)
+            if lyrics:
+                return lyrics
 
     print(f"[bugs-direct] 제목 일치 결과 없음 — {korean_title!r}")
     return None
@@ -1203,6 +1241,14 @@ def search_lyrics_naver(title: str, artist: str, isrc: str | None = None) -> str
                     return lyrics
             else:
                 print(f"[naver]   재검색 벅스 링크 스킵 (곡 불일치): {raw_title!r}")
+
+    # webkr 결과에 벅스 링크가 없어도, 한글 아티스트명을 얻었다면 벅스에 직접 물어본다.
+    # 기존에는 이 호출이 2단계(iTunes 성공) 안에만 있어서, iTunes가 실패하는
+    # 인디 곡은 한글 아티스트명을 알아내고도 그냥 포기했다.
+    print(f"[naver] ▶ webkr 실패 — 벅스 직접 검색 시도 (artist={korean_artist!r})")
+    lyrics = _search_bugs_direct(search_title, korean_artist)
+    if lyrics:
+        return lyrics
 
     print("[naver] 재검색에서도 벅스 링크 없음, fallback 중단")
     return None
