@@ -137,7 +137,39 @@ def clean_lyrics(raw_lyrics: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     lines = [line.strip() for line in text.split('\n')]
     text = '\n'.join(lines).strip()
-    return text
+    return _strip_bugs_footer(text)
+
+
+BUGS_FOOTER_MARK = "님이 등록해 주신 가사입니다"
+
+
+def _strip_bugs_footer(text: str) -> str:
+    """벅스 가사 페이지 푸터 제거.
+
+    벅스는 가사 끝에 등록자 정보를 붙인다.
+        Bugs
+        님이 등록해 주신 가사입니다.
+        가사 오류 제보
+
+    등록자 이름은 임의 토큰('Bugs', 'swelled', 'bsadmin56' …)이라 정규식으로 못 잡는다.
+    마커 줄을 찾아 바로 앞 한 줄까지만 지운다. 마커가 없으면 아무것도 건드리지 않는다.
+    """
+    if BUGS_FOOTER_MARK not in text and "가사 오류 제보" not in text:
+        return text
+
+    out = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if BUGS_FOOTER_MARK in stripped:
+            while out and not out[-1].strip():
+                out.pop()
+            if out:
+                out.pop()          # 등록자 이름 줄
+            continue
+        if stripped == "가사 오류 제보":
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
 
 
 # ======================
