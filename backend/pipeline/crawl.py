@@ -646,34 +646,52 @@ def search_song_with_diagnostics(
             diagnostics["pages_fetched"] += len({s.get("source_page") for s in songs})
             diagnostics["songs_scanned"] += len(songs)
 
+            # 1차는 primary_artist_id가 앵커와 같은 곡만 본다(엄격 — 피처링 오탐 차단).
+            # 1차가 0건일 때만 2차로 그 제약을 풀고 같은 목록을 다시 훑는다.
+            #
+            # K-pop은 서브유닛·솔로가 Genius에서 별도 아티스트다.
+            #   BOSS  -> primary_artist = NCT U      (앵커 NCT 와 id 불일치)
+            #   Egoist -> primary_artist = Olivia Hye (앵커 LOONA 와 id 불일치)
+            # Spotify가 주는 아티스트명은 상위 이름이라 1차가 구조적으로 항상 빈다.
+            # 실측: NCT 245곡 중 197곡, LOONA 194곡 중 69곡이 이 단계에서 버려졌다.
+            # 2차에서도 _title_exact_match를 그대로 요구하므로 오탐 방어는 유지된다.
             candidate_match_count = 0
-            for song in songs:
-                if song.get("primary_artist_id") != candidate_id:
-                    diagnostics["non_primary_skipped"] += 1
-                    continue
-                if not _title_exact_match(title, song.get("title", "")):
-                    candidate_norm = _normalize_text(song.get("title", ""), keep_parenthetical=True)
-                    near_misses.append(
-                        {
-                            "title": song.get("title", ""),
-                            "artist": song.get("artist", ""),
-                            "candidate_artist": candidate_name,
-                            "similarity": round(_sequence_ratio(query_norm, candidate_norm), 3),
-                            "page": song.get("source_page"),
-                        }
-                    )
-                    continue
+            for allow_non_primary in (False, True):
+                for song in songs:
+                    is_primary = song.get("primary_artist_id") == candidate_id
+                    if not is_primary and not allow_non_primary:
+                        diagnostics["non_primary_skipped"] += 1
+                        continue
+                    if not _title_exact_match(title, song.get("title", "")):
+                        if not allow_non_primary:
+                            candidate_norm = _normalize_text(song.get("title", ""), keep_parenthetical=True)
+                            near_misses.append(
+                                {
+                                    "title": song.get("title", ""),
+                                    "artist": song.get("artist", ""),
+                                    "candidate_artist": candidate_name,
+                                    "similarity": round(_sequence_ratio(query_norm, candidate_norm), 3),
+                                    "page": song.get("source_page"),
+                                }
+                            )
+                        continue
 
-                match = dict(song)
-                match["match_score"] = 100.0
-                match["match_reasons"] = ["artist_anchor_exact", "title_exact"]
-                match["match_artist"] = {
-                    "id": candidate_id,
-                    "name": candidate_name,
-                    "score": candidate["score"],
-                }
-                matches.append(match)
-                candidate_match_count += 1
+                    match = dict(song)
+                    match["match_score"] = 100.0 if is_primary else 90.0
+                    match["match_reasons"] = [
+                        "artist_anchor_exact" if is_primary else "artist_anchor_related",
+                        "title_exact",
+                    ]
+                    match["match_artist"] = {
+                        "id": candidate_id,
+                        "name": candidate_name,
+                        "score": candidate["score"],
+                    }
+                    matches.append(match)
+                    candidate_match_count += 1
+
+                if candidate_match_count > 0:
+                    break
 
             if debug_mode:
                 print(
